@@ -8,3 +8,8 @@
 #define SERVER_PORT 11850
 
 #define SESSION_MAX 5000
+
+typedef struct EchoPacketHeader
+{
+	short _len;
+};
