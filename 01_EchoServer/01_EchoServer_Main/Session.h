@@ -2,6 +2,7 @@
 
 #include "RingBuffer.h"
 #include "SerializationBuffer.h"
+#include "Protocol.h"
 
 #include <WinSock2.h>
 #include <Windows.h>
@@ -13,7 +14,6 @@ enum class eOverlappedType
 	RECV = 0,
 	SEND = 1,
 	RELEASE = 2,
-	SENDPOST = 3,
 };
 
 class MyOverlapped
@@ -42,7 +42,6 @@ private:
 	MyOverlapped _recvOvl;
 	MyOverlapped _sendOvl;
 	MyOverlapped _releaseOvl;
-	MyOverlapped _sendPostOvl;
 
 	MyDataStructure::RingBuffer _recvBuffer;
 	MyDataStructure::RingBuffer _sendBuffer;
@@ -51,4 +50,6 @@ private:
 	volatile long _sendStatus = 0;
 
 	SRWLOCK _lock;
+
+	friend class IServer;
 };

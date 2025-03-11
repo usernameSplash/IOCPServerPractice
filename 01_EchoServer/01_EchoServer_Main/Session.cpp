@@ -16,9 +16,6 @@ Session::Session()
 	ZeroMemory(&_releaseOvl._ovl, sizeof(WSAOVERLAPPED));
 	_releaseOvl._type = eOverlappedType::RELEASE;
 
-	ZeroMemory(&_sendPostOvl._ovl, sizeof(WSAOVERLAPPED));
-	_sendPostOvl._type = eOverlappedType::SENDPOST;
-
 	InitializeSRWLock(&_lock);
 }
 

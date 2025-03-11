@@ -1,9 +1,13 @@
 #pragma once
+#pragma comment(lib, "ws2_32.lib")
 
 #include "Session.h"
 
 #include <Windows.h>
 #include <process.h>
+#include <WS2tcpip.h>
+#include <unordered_map>
+
 
 class SPacket;
 
@@ -21,16 +25,16 @@ public:
 
 protected:
 	// Called by Contents Code (Require Something to Network Library)
-	bool DisconnectSession(const __int64 sessionId);
-	bool SendPacket(const __int64 sessionId, SPacket* packet);
+	bool DisconnectSession(const SessionID sessionId);
+	bool SendPacket(const SessionID sessionId, SPacket* packet);
 
 protected:
 	// Called by Network Library Code
 	virtual void OnInitialize(void) = 0;
 	virtual bool OnConnectionRequest(const wchar_t* ip, const short port) = 0;
-	virtual void OnAccept(const __int64 sessionId) = 0;
-	virtual void OnRelease(const __int64 sessionId) = 0;
-	virtual void OnRecv(const __int64 sessionId, SPacket* packet) = 0;
+	virtual void OnAccept(const SessionID sessionId) = 0;
+	virtual void OnRelease(const SessionID sessionId) = 0;
+	virtual void OnRecv(const SessionID sessionId, SPacket* packet) = 0;
 	//virtual void OnSend(const __int64 sessionId, const int sendByte) = 0;
 	virtual void OnError(const int errorCode, wchar_t* errorMsg) = 0;
 
@@ -43,6 +47,7 @@ private:
 private:
 	void HandleRecv(Session* session, int recvByte);
 	void HandleSend(Session* session, int sendByte);
+	void HandleRelease(Session* session);
 
 private:
 	// Wrapper of WSA IO Function
@@ -51,37 +56,37 @@ private:
 
 protected:
 	// Functions for Monitoring
-	inline long GetSessionCount(void)
+	inline long GetSessionCount(void) const
 	{
 		return _sessionCnt;
 	}
 
-	inline long GetAcceptTotal(void)
+	inline long GetAcceptTotal(void) const
 	{
 		return _acceptTotal;
 	}
 
-	inline long GetDisconnectTotal(void)
+	inline long GetDisconnectTotal(void) const
 	{
 		return _disconnectTotal;
 	}
 
-	inline long GetAcceptTPS(void)
+	inline long GetAcceptTPS(void) const
 	{
 		return _acceptTPS;
 	}
 
-	inline long GetDisconnectTPS(void)
+	inline long GetDisconnectTPS(void) const
 	{
 		return _disconnectTPS;
 	}
 
-	inline long GetRecvTPS(void)
+	inline long GetRecvTPS(void) const
 	{
 		return _recvTPS;
 	}
 
-	inline long GetSendTPS(void)
+	inline long GetSendTPS(void) const
 	{
 		return _sendTPS;
 	}
@@ -97,6 +102,9 @@ private:
 	HANDLE _acceptThread;
 	HANDLE* _networkThreads;
 
+	std::unordered_map<SessionID, Session*> _sessionMap;
+	SRWLOCK _sessionMapLock;
+
 private:
 	volatile long _acceptCnt = 0;
 	volatile long _disconnectCnt = 0;
@@ -111,4 +119,6 @@ private:
 
 	long _acceptTotal = 0;
 	long _disconnectTotal = 0;
+
+	bool _isActive = true;
 };
