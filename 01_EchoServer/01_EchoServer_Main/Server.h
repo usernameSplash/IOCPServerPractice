@@ -3,6 +3,7 @@
 
 #include "Session.h"
 
+#include <WinSock2.h>
 #include <Windows.h>
 #include <process.h>
 #include <WS2tcpip.h>
@@ -15,12 +16,10 @@ class IServer
 {
 public:
 	IServer();
-	~IServer() {};
+	virtual ~IServer() {};
 
 protected:
-	bool Initialize(wchar_t* IP, short port, int numOfWorkerThread, int numOfConcurrentWorkerThread, bool nagle, bool zeroCopy, int numSessionMax);
-
-public:
+	bool Initialize(const wchar_t* IP, short port, int numOfWorkerThread, int numOfConcurrentWorkerThread, bool nagle, bool zeroCopy, int numSessionMax);
 	void Terminate(void);
 
 protected:
@@ -91,16 +90,16 @@ protected:
 		return _sendTPS;
 	}
 
-
 // Variables
 private:
-	wchar_t _IP[16];
-	short _port;
-	int _numSessionMax;
-	SOCKET _listenSocket;
-	HANDLE _networkIOCP;
-	HANDLE _acceptThread;
-	HANDLE* _networkThreads;
+	wchar_t _IP[16] = { 0, };
+	short _port = 0;
+	int _numOfWorkerThread = 0;
+	int _numSessionMax = SESSION_MAX;
+	SOCKET _listenSocket = INVALID_SOCKET;
+	HANDLE _networkIOCP = NULL;
+	HANDLE _acceptThread = NULL;
+	HANDLE* _networkThreads = { 0, };
 
 	std::unordered_map<SessionID, Session*> _sessionMap;
 	SRWLOCK _sessionMapLock;

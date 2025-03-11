@@ -8,10 +8,11 @@ IServer::IServer()
 	// To do...
 }
 
-bool IServer::Initialize(wchar_t* IP, short port, int numOfWorkerThread, int numOfConcurrentWorkerThread, bool nagle, bool zeroCopy, int numSessionMax)
+bool IServer::Initialize(const wchar_t* IP, short port, int numOfWorkerThread, int numOfConcurrentWorkerThread, bool nagle, bool zeroCopy, int numSessionMax)
 {
 	wcsncpy(_IP, IP, 16);
 	_port = port;
+	_numOfWorkerThread = numOfWorkerThread;
 	_numSessionMax = numSessionMax;
 
 	WSADATA wsa;
@@ -92,8 +93,8 @@ bool IServer::Initialize(wchar_t* IP, short port, int numOfWorkerThread, int num
 	}
 
 	// create network threads
-	_networkThreads = new HANDLE[numOfWorkerThread];
-	for (int iCnt = 0; iCnt < numOfWorkerThread; ++iCnt)
+	_networkThreads = new HANDLE[_numOfWorkerThread];
+	for (int iCnt = 0; iCnt < _numOfWorkerThread; ++iCnt)
 	{
 		_networkThreads[iCnt] = (HANDLE)_beginthreadex(NULL, 0, NetworkThread, this, 0, NULL);
 		if (_networkThreads[iCnt] == NULL)
@@ -113,7 +114,39 @@ bool IServer::Initialize(wchar_t* IP, short port, int numOfWorkerThread, int num
 
 void IServer::Terminate(void)
 {
+	_isActive = false;
 
+	closesocket(_listenSocket);
+
+	std::unordered_map<SessionID, Session*>::iterator iter = _sessionMap.begin();
+
+	for (; iter != _sessionMap.end();)
+	{
+		Session* session = iter->second;
+		_sessionMap.erase(iter);
+		closesocket(session->_clientSocket);
+		delete session;
+	}
+
+	for (int iCnt = 0; iCnt < _numOfWorkerThread; ++iCnt)
+	{
+		PostQueuedCompletionStatus(_networkIOCP, 0, 0, 0);
+	}
+
+	WaitForSingleObject(_acceptThread, INFINITE);
+	WaitForMultipleObjects(_numOfWorkerThread, _networkThreads, TRUE, INFINITE);
+
+	CloseHandle(_networkIOCP);
+	CloseHandle(_acceptThread);
+
+	for (int iCnt = 0; iCnt < _numOfWorkerThread; ++iCnt)
+	{
+		CloseHandle(_networkThreads[iCnt]);
+	}
+
+	delete[] _networkThreads;
+
+	WSACleanup();
 }
 
 bool IServer::DisconnectSession(const SessionID sessionId)
@@ -137,6 +170,8 @@ bool IServer::DisconnectSession(const SessionID sessionId)
 	// Todo..
 
 	ReleaseSRWLockExclusive(&session->_lock);
+
+	return true;
 }
 
 bool IServer::SendPacket(const SessionID sessionId, SPacket* packet)
@@ -159,6 +194,8 @@ bool IServer::SendPacket(const SessionID sessionId, SPacket* packet)
 	// Todo..
 
 	ReleaseSRWLockExclusive(&session->_lock);
+
+	return true;
 }
 
 unsigned int WINAPI IServer::AcceptThread(void* arg)
@@ -177,17 +214,25 @@ unsigned int WINAPI IServer::AcceptThread(void* arg)
 		SOCKADDR_IN clientAddr;
 
 		clientSocket = accept(instance->_listenSocket, (SOCKADDR*)&clientAddr, &addrLen);
-
+		if (clientSocket == INVALID_SOCKET)
+		{
+			wprintf(L"# Accept Failed");
+			__debugbreak();
+			instance->_isActive = false;
+			break;
+		}
+	
 		if (instance->_isActive == false)
 		{
 			break;
 		}
 
-		if (clientSocket == INVALID_SOCKET)
+
+		if (instance->_sessionCnt >= instance->_numSessionMax)
 		{
-			__debugbreak();
-			instance->_isActive = false;
-			break;
+			closesocket(clientSocket);
+			InterlockedIncrement(&instance->_disconnectCnt);
+			continue;
 		}
 
 #pragma region validate_client_connection
@@ -245,7 +290,7 @@ unsigned int WINAPI IServer::NetworkThread(void* arg)
 		Session* completionSession;
 		MyOverlapped* overlapped;
 
-		int gqcsRet = GetQueuedCompletionStatus((HANDLE)instance->_networkIOCP, &transferredByte, (PULONG_PTR)completionSession, (LPOVERLAPPED*)overlapped, INFINITE);
+		int gqcsRet = GetQueuedCompletionStatus((HANDLE)instance->_networkIOCP, &transferredByte, (PULONG_PTR)&completionSession, (LPOVERLAPPED*)&overlapped, INFINITE);
 
 		if (instance->_isActive == false)
 		{
@@ -266,7 +311,7 @@ unsigned int WINAPI IServer::NetworkThread(void* arg)
 			{
 				DWORD errorCode = GetLastError();
 
-				if (errorCode != WSAECONNABORTED || errorCode != WSAECONNRESET)
+				if (errorCode != WSAECONNABORTED && errorCode != WSAECONNRESET)
 				{
 					wprintf(L"# GQCS Returned Zero : %d\n", gqcsRet);
 				}
@@ -296,6 +341,8 @@ unsigned int WINAPI IServer::NetworkThread(void* arg)
 
 		ReleaseSRWLockExclusive(&completionSession->_lock);
 	}
+
+	return 0;
 }
 
 // recv data to messages & call OnRecv
@@ -386,12 +433,12 @@ void IServer::RecvPost(Session* session)
 	InterlockedIncrement(&session->_ioCount);
 	ZeroMemory(&session->_recvOvl._ovl, sizeof(WSAOVERLAPPED));
 
-	int freeSize = session->_recvBuffer.Capacity() - session->_recvBuffer.Size();
+	int freeSize = (int)(session->_recvBuffer.Capacity() - session->_recvBuffer.Size());
 
 	WSABUF wsabuf[2];
 
 	wsabuf[0].buf = session->_recvBuffer.GetRearBufferPtr();
-	wsabuf[0].len = session->_recvBuffer.DirectEnqueueSize();
+	wsabuf[0].len = (ULONG)session->_recvBuffer.DirectEnqueueSize();
 	wsabuf[1].buf = session->_recvBuffer.GetBufferPtr();
 	wsabuf[1].len = freeSize - wsabuf[0].len;
 
@@ -404,9 +451,9 @@ void IServer::RecvPost(Session* session)
 
 		if (errorCode != ERROR_IO_PENDING)
 		{
-			if (errorCode != WSAECONNRESET || errorCode != WSAECONNABORTED)
+			if (errorCode != WSAECONNRESET && errorCode != WSAECONNABORTED)
 			{
-				wprintf(L"# WSARecv Error in Session %d\n", session->_sessionId);
+				wprintf(L"# WSARecv Error in Session %llu\n", session->_sessionId);
 			}
 		}
 	}
@@ -430,12 +477,12 @@ void IServer::SendPost(Session* session)
 	InterlockedIncrement(&session->_ioCount);
 	ZeroMemory(&session->_sendOvl._ovl, sizeof(WSAOVERLAPPED));
 
-	int bufferSize = session->_sendBuffer.Size();
+	int bufferSize = (int)(session->_sendBuffer.Size());
 
 	WSABUF wsabuf[2];
 
 	wsabuf[0].buf = session->_sendBuffer.GetFrontBufferPtr();
-	wsabuf[0].len = session->_sendBuffer.DirectDequeueSize();
+	wsabuf[0].len = (ULONG)session->_sendBuffer.DirectDequeueSize();
 	wsabuf[1].buf = session->_sendBuffer.GetBufferPtr();
 	wsabuf[1].len = bufferSize - wsabuf[0].len;
 
@@ -448,9 +495,9 @@ void IServer::SendPost(Session* session)
 
 		if (errorCode != ERROR_IO_PENDING)
 		{
-			if (errorCode != WSAECONNRESET || errorCode != WSAECONNABORTED)
+			if (errorCode != WSAECONNRESET && errorCode != WSAECONNABORTED)
 			{
-				wprintf(L"# WSASend Error in Session %d\n", session->_sessionId);
+				wprintf(L"# WSASend Error in Session %llu\n", session->_sessionId);
 			}
 		}
 	}

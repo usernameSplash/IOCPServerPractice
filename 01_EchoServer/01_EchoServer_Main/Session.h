@@ -1,8 +1,8 @@
 #pragma once
 
+#include "Protocol.h"
 #include "RingBuffer.h"
 #include "SerializationBuffer.h"
-#include "Protocol.h"
 
 #include <WinSock2.h>
 #include <Windows.h>

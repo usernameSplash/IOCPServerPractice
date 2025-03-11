@@ -12,4 +12,4 @@
 typedef struct EchoPacketHeader
 {
 	short _len;
-};
+} EchoPacketHeader;
