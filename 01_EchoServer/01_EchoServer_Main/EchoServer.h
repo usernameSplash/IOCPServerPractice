@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Server.h"
+#include "ContentsProtocol.h"
 
 class EchoServer : public IServer
 {
@@ -25,7 +26,10 @@ private:
 	virtual void OnAccept(const SessionID sessionId) override;
 	virtual void OnRelease(const SessionID sessionId) override;
 	virtual void OnRecv(const SessionID sessionId, SPacket* packet) override;
-	virtual void OnError(const int errorCode, wchar_t* errorMsg) override;
+	virtual void OnError(const int errorCode, const wchar_t* errorMsg) override;
+
+private:
+	static unsigned int WINAPI MonitorThread(void* arg);
 
 public:
 	inline bool IsAlive(void) const
@@ -35,4 +39,5 @@ public:
 
 private:
 	bool _isAlive = true;
+	HANDLE _monitorThread = NULL;
 };

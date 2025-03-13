@@ -13,7 +13,7 @@ int wmain(void)
 {
 	timeBeginPeriod(1);
 
-	if (g_service.Initialize())
+	if (g_service.Initialize() == false)
 	{
 		return 0;
 	}

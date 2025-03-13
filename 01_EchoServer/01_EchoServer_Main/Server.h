@@ -35,7 +35,7 @@ protected:
 	virtual void OnRelease(const SessionID sessionId) = 0;
 	virtual void OnRecv(const SessionID sessionId, SPacket* packet) = 0;
 	//virtual void OnSend(const __int64 sessionId, const int sendByte) = 0;
-	virtual void OnError(const int errorCode, wchar_t* errorMsg) = 0;
+	virtual void OnError(const int errorCode, const wchar_t* errorMsg) = 0;
 
 private:
 	// Thread Procedure
@@ -55,6 +55,8 @@ private:
 
 protected:
 	// Functions for Monitoring
+	void UpdateMonitoringData(void);
+
 	inline long GetSessionCount(void) const
 	{
 		return _sessionCnt;
@@ -90,10 +92,18 @@ protected:
 		return _sendTPS;
 	}
 
+protected:
+	inline bool IsActive(void) const
+	{
+		return _isActive;
+	}
+
 // Variables
-private:
+protected:
 	wchar_t _IP[16] = { 0, };
 	short _port = 0;
+
+private:
 	int _numOfWorkerThread = 0;
 	int _numSessionMax = SESSION_MAX;
 	SOCKET _listenSocket = INVALID_SOCKET;

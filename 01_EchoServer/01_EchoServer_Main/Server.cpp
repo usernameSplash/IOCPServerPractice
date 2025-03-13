@@ -162,14 +162,16 @@ bool IServer::DisconnectSession(const SessionID sessionId)
 
 	Session* session = iter->second;
 
-	AcquireSRWLockExclusive(&session->_lock);
+	//AcquireSRWLockExclusive(&session->_lock);
+	EnterCriticalSection(&session->_lock);
 
 	ReleaseSRWLockShared(&_sessionMapLock);
 
 	session->_isActive = false;
 	// Todo..
 
-	ReleaseSRWLockExclusive(&session->_lock);
+	//ReleaseSRWLockShared(&session->_lock);
+	LeaveCriticalSection(&session->_lock);
 
 	return true;
 }
@@ -187,13 +189,23 @@ bool IServer::SendPacket(const SessionID sessionId, SPacket* packet)
 
 	Session* session = iter->second;
 
-	AcquireSRWLockExclusive(&session->_lock);
+	//AcquireSRWLockExclusive(&session->_lock);
+	EnterCriticalSection(&session->_lock);
 
 	ReleaseSRWLockShared(&_sessionMapLock);
 
-	// Todo..
+	EchoPacketHeader header;
+	header._len = (short)packet->GetPayloadSize();
 
-	ReleaseSRWLockExclusive(&session->_lock);
+	packet->SetHeaderData(&header, sizeof(header));
+
+	session->_sendBuffer.Enqueue(packet->GetBufferPtr(), sizeof(header) + header._len);
+
+	//ReleaseSRWLockShared(&session->_lock);
+
+	SendPost(session);
+
+	LeaveCriticalSection(&session->_lock);
 
 	return true;
 }
@@ -214,6 +226,12 @@ unsigned int WINAPI IServer::AcceptThread(void* arg)
 		SOCKADDR_IN clientAddr;
 
 		clientSocket = accept(instance->_listenSocket, (SOCKADDR*)&clientAddr, &addrLen);
+		
+		if (instance->_isActive == false)
+		{
+			break;
+		}
+
 		if (clientSocket == INVALID_SOCKET)
 		{
 			wprintf(L"# Accept Failed");
@@ -222,16 +240,10 @@ unsigned int WINAPI IServer::AcceptThread(void* arg)
 			break;
 		}
 	
-		if (instance->_isActive == false)
-		{
-			break;
-		}
-
-
 		if (instance->_sessionCnt >= instance->_numSessionMax)
 		{
 			closesocket(clientSocket);
-			InterlockedIncrement(&instance->_disconnectCnt);
+			//InterlockedIncrement(&instance->_disconnectCnt);
 			continue;
 		}
 
@@ -303,17 +315,18 @@ unsigned int WINAPI IServer::NetworkThread(void* arg)
 			continue;
 		}
 
-		AcquireSRWLockExclusive(&completionSession->_lock);
+		//AcquireSRWLockExclusive(&completionSession->_lock);
+		EnterCriticalSection(&completionSession->_lock);
 
 		if (gqcsRet == 0 || transferredByte == 0)
 		{
 			if (gqcsRet == 0)
 			{
-				DWORD errorCode = GetLastError();
+				DWORD errorCode = WSAGetLastError();
 
-				if (errorCode != WSAECONNABORTED && errorCode != WSAECONNRESET)
+				if (errorCode != WSAECONNABORTED && errorCode != WSAECONNRESET && errorCode != ERROR_NETNAME_DELETED)
 				{
-					wprintf(L"# GQCS Returned Zero : %d\n", gqcsRet);
+					wprintf(L"# (Error) GQCS Returned Zero : %d\n", errorCode);
 				}
 			}
 		}
@@ -339,8 +352,11 @@ unsigned int WINAPI IServer::NetworkThread(void* arg)
 			PostQueuedCompletionStatus((HANDLE)instance->_networkIOCP, 1, (ULONG_PTR)completionSession, (LPOVERLAPPED)&completionSession->_releaseOvl);
 		}
 
-		ReleaseSRWLockExclusive(&completionSession->_lock);
+		//ReleaseSRWLockExclusive(&completionSession->_lock);
+		LeaveCriticalSection(&completionSession->_lock);
 	}
+
+	wprintf(L"# Network Thread End : %d\n", threadId);
 
 	return 0;
 }
@@ -351,6 +367,7 @@ void IServer::HandleRecv(Session* session, int recvByte)
 	session->_recvBuffer.MoveRear(recvByte);
 
 	int bufferSize = recvByte;
+	int cnt = 0;
 
 	while (bufferSize > 0)
 	{
@@ -362,7 +379,7 @@ void IServer::HandleRecv(Session* session, int recvByte)
 		EchoPacketHeader header;
 		session->_recvBuffer.Peek((char*)&header, sizeof(header));
 
-		if (bufferSize < sizeof(header) + header._len)
+		if (bufferSize < (sizeof(header) + header._len))
 		{
 			break;
 		}
@@ -373,14 +390,22 @@ void IServer::HandleRecv(Session* session, int recvByte)
 		session->_recvBuffer.Peek((char*)packet.GetPayloadPtr(), header._len);
 		session->_recvBuffer.Dequeue(header._len);
 
+		packet.MoveWritePos(header._len);
+
+		bufferSize = bufferSize - (sizeof(header) + header._len);
+
+		cnt++;
 		OnRecv(session->_sessionId, &packet);
 	}
 
+	InterlockedAdd(&_recvCnt, cnt);
 	RecvPost(session);
 }
 
 void IServer::HandleSend(Session* session, int sendByte)
 {
+	InterlockedIncrement(&_sendCnt);
+
 	session->_sendBuffer.MoveFront(sendByte);
 
 	long prevSendFlag = InterlockedDecrement(&session->_sendStatus);
@@ -408,14 +433,19 @@ void IServer::HandleRelease(Session* session)
 
 	ReleaseSRWLockExclusive(&_sessionMapLock);
 
-	AcquireSRWLockExclusive(&session->_lock);
-	ReleaseSRWLockExclusive(&session->_lock);
+	//AcquireSRWLockExclusive(&session->_lock);
+	//ReleaseSRWLockExclusive(&session->_lock);
+	EnterCriticalSection(&session->_lock);
+	LeaveCriticalSection(&session->_lock);
 
 	closesocket(session->_clientSocket);
 
 	delete session;
 
-	InterlockedIncrement(&_disconnectCnt);
+	InterlockedDecrement(&_sessionCnt);
+	//InterlockedIncrement(&_disconnectCnt);
+	_disconnectCnt++;
+
 	OnRelease(id);
 
 	return;
@@ -451,7 +481,7 @@ void IServer::RecvPost(Session* session)
 
 		if (errorCode != ERROR_IO_PENDING)
 		{
-			if (errorCode != WSAECONNRESET && errorCode != WSAECONNABORTED)
+			if (errorCode != WSAECONNRESET && errorCode != WSAECONNABORTED && errorCode != ERROR_NETNAME_DELETED)
 			{
 				wprintf(L"# WSARecv Error in Session %llu\n", session->_sessionId);
 			}
@@ -469,7 +499,17 @@ void IServer::SendPost(Session* session)
 		return;
 	}
 
+	if (session->_sendBuffer.Size() == 0)
+	{
+		return;
+	}
+
 	if (InterlockedExchange(&session->_sendStatus, 1) == 1)
+	{
+		return;
+	}
+
+	if (session->_sendBuffer.Size() == 0)
 	{
 		return;
 	}
@@ -495,7 +535,7 @@ void IServer::SendPost(Session* session)
 
 		if (errorCode != ERROR_IO_PENDING)
 		{
-			if (errorCode != WSAECONNRESET && errorCode != WSAECONNABORTED)
+			if (errorCode != WSAECONNRESET && errorCode != WSAECONNABORTED && errorCode != ERROR_NETNAME_DELETED)
 			{
 				wprintf(L"# WSASend Error in Session %llu\n", session->_sessionId);
 			}
@@ -503,3 +543,20 @@ void IServer::SendPost(Session* session)
 	}
 }
 
+void IServer::UpdateMonitoringData(void)
+{
+	_acceptTPS = _acceptCnt;
+	_disconnectTPS = _disconnectCnt;
+	_recvTPS = _recvCnt;
+	_sendTPS = _sendCnt;
+
+	_acceptTotal += _acceptCnt;
+	_disconnectTotal += _disconnectCnt;
+
+	_acceptCnt = 0;
+	_disconnectCnt = 0;
+	_recvCnt = 0;
+	_sendCnt = 0;
+
+	return;
+}
