@@ -16,11 +16,19 @@ Session::Session()
 	ZeroMemory(&_releaseOvl._ovl, sizeof(WSAOVERLAPPED));
 	_releaseOvl._type = eOverlappedType::RELEASE;
 
-	InitializeSRWLock(&_lock);
+	//InitializeSRWLock(&_lock);
+	InitializeCriticalSection(&_lock);
+}
+
+Session::~Session(void)
+{
+	DeleteCriticalSection(&_lock);
 }
 
 void Session::Initialize(const SessionID id, const SOCKET socket, const SOCKADDR_IN addr)
 {
+	_isActive = true;
+
 	_sessionId = id;
 	_clientSocket = socket;
 	_clientAddr = addr;

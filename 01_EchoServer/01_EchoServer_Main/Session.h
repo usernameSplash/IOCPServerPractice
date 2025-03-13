@@ -27,7 +27,8 @@ class Session
 {
 
 public:
-	Session();
+	Session(void);
+	~Session(void);
 
 public:
 	void Initialize(const SessionID id, const SOCKET socket, const SOCKADDR_IN addr);
@@ -49,7 +50,8 @@ private:
 	volatile long _ioCount = 0;
 	volatile long _sendStatus = 0;
 
-	SRWLOCK _lock;
+	//SRWLOCK _lock;
+	CRITICAL_SECTION _lock;
 
 	friend class IServer;
 };
