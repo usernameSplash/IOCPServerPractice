@@ -349,7 +349,7 @@ unsigned int WINAPI IServer::NetworkThread(void* arg)
 
 		if (InterlockedDecrement(&completionSession->_ioCount) == 0)
 		{
-			PostQueuedCompletionStatus((HANDLE)instance->_networkIOCP, 1, (ULONG_PTR)completionSession, (LPOVERLAPPED)&completionSession->_releaseOvl);
+			PostQueuedCompletionStatus(instance->_networkIOCP, 1, (ULONG_PTR)completionSession, (LPOVERLAPPED)&completionSession->_releaseOvl);
 		}
 
 		//ReleaseSRWLockExclusive(&completionSession->_lock);
@@ -438,13 +438,14 @@ void IServer::HandleRelease(Session* session)
 	EnterCriticalSection(&session->_lock);
 	LeaveCriticalSection(&session->_lock);
 
+	session->_isActive = false;
 	closesocket(session->_clientSocket);
 
 	delete session;
 
 	InterlockedDecrement(&_sessionCnt);
-	//InterlockedIncrement(&_disconnectCnt);
-	_disconnectCnt++;
+	InterlockedIncrement(&_disconnectCnt);
+	//_disconnectCnt++;
 
 	OnRelease(id);
 
@@ -483,7 +484,11 @@ void IServer::RecvPost(Session* session)
 		{
 			if (errorCode != WSAECONNRESET && errorCode != WSAECONNABORTED && errorCode != ERROR_NETNAME_DELETED)
 			{
-				wprintf(L"# WSARecv Error in Session %llu\n", session->_sessionId);
+				wprintf(L"(Error) WSASend Error, sessionId : %llu, errorCode : %d\n", session->_sessionId, errorCode);
+			}
+			if (InterlockedDecrement(&session->_ioCount) == 0)
+			{
+				PostQueuedCompletionStatus(_networkIOCP, 1, (ULONG_PTR)session, (LPOVERLAPPED)&session->_releaseOvl);
 			}
 		}
 	}
@@ -537,7 +542,11 @@ void IServer::SendPost(Session* session)
 		{
 			if (errorCode != WSAECONNRESET && errorCode != WSAECONNABORTED && errorCode != ERROR_NETNAME_DELETED)
 			{
-				wprintf(L"# WSASend Error in Session %llu\n", session->_sessionId);
+				wprintf(L"(Error) WSARecv Error, sessionId : %llu, errorCode : %d\n", session->_sessionId, errorCode);
+			}
+			if (InterlockedDecrement(&session->_ioCount) == 0)
+			{
+				PostQueuedCompletionStatus(_networkIOCP, 1, (ULONG_PTR)session, (LPOVERLAPPED)&session->_releaseOvl);
 			}
 		}
 	}
