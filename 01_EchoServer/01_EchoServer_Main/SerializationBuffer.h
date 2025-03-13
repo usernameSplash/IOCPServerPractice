@@ -8,7 +8,7 @@ class SPacket
 public:
 	enum eBufferDefault
 	{
-		BUFFER_HEADER_MAX_SIZE = 64,
+		BUFFER_HEADER_MAX_SIZE = 2,
 		BUFFER_MINIMUM_SIZE = 128,
 		BUFFER_DEFAULT_SIZE = 128,
 		BUFFER_MAX_SIZE = 1024,

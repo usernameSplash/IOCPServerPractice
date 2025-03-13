@@ -5,7 +5,7 @@
 
 SPacket::SPacket()
 	: mBuffer(new char[BUFFER_DEFAULT_SIZE])
-	, mPayloadPtr(mBuffer + sizeof(BUFFER_HEADER_MAX_SIZE))
+	, mPayloadPtr(mBuffer + BUFFER_HEADER_MAX_SIZE)
 	, mReadPos(mPayloadPtr)
 	, mWritePos(mPayloadPtr)
 	, mCapacity(BUFFER_DEFAULT_SIZE)
