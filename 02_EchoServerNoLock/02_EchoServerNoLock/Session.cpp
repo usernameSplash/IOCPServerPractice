@@ -2,8 +2,8 @@
 #include "Session.h"
 
 Session::Session()
-	: _recvBuffer(4096)
-	, _sendBuffer(4096)
+	: _recvBuffer(20000)
+	, _sendBuffer(20000)
 {
 	ZeroMemory(&_clientAddr, sizeof(_clientAddr));
 

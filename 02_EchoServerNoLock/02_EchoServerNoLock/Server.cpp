@@ -217,7 +217,13 @@ unsigned int WINAPI IServer::AcceptThread(void* arg)
 
 		if (clientSocket == INVALID_SOCKET)
 		{
-			wprintf(L"# Accept Failed");
+			if (instance->_isActive == false)
+			{
+				break;
+			}
+
+			int errorCode = WSAGetLastError();
+			wprintf(L"# Accept Failed : %d\n", errorCode);
 			//__debugbreak();
 			instance->_isActive = false;
 			break;
@@ -410,9 +416,14 @@ void IServer::HandleSend(Session* session, int sendByte)
 void IServer::HandleRelease(Session* session)
 {
 	SessionID id = session->_sessionId;
+	short idx = Session::GetIndexNumFromId(id);
 
 	session->_isActive = false;
 	closesocket(session->_clientSocket);
+
+	AcquireSRWLockExclusive(&_sessionIndexStackLock);
+	_sessionIndexStack.push(id);
+	ReleaseSRWLockExclusive(&_sessionIndexStackLock);
 
 	InterlockedDecrement(&_sessionCnt);
 	InterlockedIncrement(&_disconnectCnt);
