@@ -484,7 +484,7 @@ void IServer::RecvPost(Session* session)
 		{
 			if (errorCode != WSAECONNRESET && errorCode != WSAECONNABORTED && errorCode != ERROR_NETNAME_DELETED)
 			{
-				wprintf(L"(Error) WSASend Error, sessionId : %llu, errorCode : %d\n", session->_sessionId, errorCode);
+				wprintf(L"(Error) WSARecv Error, sessionId : %llu, errorCode : %d\n", session->_sessionId, errorCode);
 			}
 			if (InterlockedDecrement(&session->_ioCount) == 0)
 			{
@@ -542,7 +542,7 @@ void IServer::SendPost(Session* session)
 		{
 			if (errorCode != WSAECONNRESET && errorCode != WSAECONNABORTED && errorCode != ERROR_NETNAME_DELETED)
 			{
-				wprintf(L"(Error) WSARecv Error, sessionId : %llu, errorCode : %d\n", session->_sessionId, errorCode);
+				wprintf(L"(Error) WSASend Error, sessionId : %llu, errorCode : %d\n", session->_sessionId, errorCode);
 			}
 			if (InterlockedDecrement(&session->_ioCount) == 0)
 			{
