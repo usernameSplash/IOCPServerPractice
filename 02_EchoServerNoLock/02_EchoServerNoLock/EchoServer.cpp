@@ -12,7 +12,7 @@ bool EchoServer::Initialize(void)
 		return false;
 	}
 
-	if (IServer::Initialize(SERVER_ADDRESS, SERVER_PORT, 16, 8, true, true, SESSION_MAX) == false)
+	if (IServer::Initialize(SERVER_ADDRESS, SERVER_PORT, 16, 8, true, true, 50) == false)
 	{
 		return false;
 	}
@@ -103,8 +103,13 @@ unsigned int WINAPI EchoServer::MonitorThread(void* arg)
 		wprintf(L"  Accept TPS : %d\n", instance->GetAcceptTPS());
 		wprintf(L"  Disconnect TPS : %d\n\n", instance->GetDisconnectTPS());
 
+		wprintf(L"  Recv Total : %lld messages\n", instance->GetRecvTotal());
+		wprintf(L"  Send Total : %lld messages\n\n", instance->GetSendTotal());
+
 		wprintf(L"  Recv TPS : %d messages/s\n", instance->GetRecvTPS());
-		wprintf(L"  Send TPS : %d sendcall/s\n\n", instance->GetSendTPS());
+		wprintf(L"  Send TPS : %d messages/s\n\n", instance->GetSendTPS());
+
+		instance->CheckSessionResponseTime();
 	}
 
 	wprintf(L"# Monitor Thread End : %d\n", threadId);

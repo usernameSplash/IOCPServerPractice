@@ -72,6 +72,16 @@ protected:
 		return _disconnectTotal;
 	}
 
+	inline long long GetRecvTotal(void) const
+	{
+		return _recvTotal;
+	}
+
+	inline long long GetSendTotal(void) const
+	{
+		return _sendTotal;
+	}
+
 	inline long GetAcceptTPS(void) const
 	{
 		return _acceptTPS;
@@ -90,6 +100,33 @@ protected:
 	inline long GetSendTPS(void) const
 	{
 		return _sendTPS;
+	}
+
+	inline void CheckSessionResponseTime(void) const
+	{
+		if (_isInitialized == false)
+		{
+			return;
+		}
+
+		for (int iCnt = 0; iCnt < _numSessionMax; ++iCnt)
+		{
+			Session* session = _sessionArray[iCnt];
+
+			if (session->_isActive)
+			{
+				DWORD sendTime = session->_lastSendTime;
+				DWORD recvTime = session->_lastRecvTime;
+
+				if (sendTime > recvTime)
+				{
+					if ((sendTime - recvTime) > 500)
+					{
+						wprintf(L"# The Response of session %lld is too late : %ums\n", Session::GetIdNumFromId(session->_sessionId), sendTime - recvTime);
+					}
+				}
+			}
+		}
 	}
 
 protected:
@@ -133,6 +170,9 @@ private:
 
 	long _acceptTotal = 0;
 	long _disconnectTotal = 0;
+	long long _recvTotal = 0;
+	long long _sendTotal = 0;
 
 	bool _isActive = true;
+	bool _isInitialized = false;
 };

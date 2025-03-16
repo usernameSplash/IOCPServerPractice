@@ -115,6 +115,8 @@ bool IServer::Initialize(const wchar_t* IP, short port, int numOfWorkerThread, i
 	//_sessionMap.reserve(numSessionMax);
 	//InitializeSRWLock(&_sessionMapLock);
 
+	_isInitialized = true;
+
 	OnInitialize();
 
 	return true;
@@ -390,8 +392,12 @@ void IServer::HandleRecv(Session* session, int recvByte)
 		bufferSize = bufferSize - (sizeof(header) + header._len);
 
 		cnt++;
+
+		session->_lastRecvTime = timeGetTime();
 		OnRecv(session->_sessionId, &packet);
 	}
+
+	session->_recvCnt += cnt;
 
 	InterlockedAdd(&_recvCnt, cnt);
 	RecvPost(session);
@@ -399,11 +405,15 @@ void IServer::HandleRecv(Session* session, int recvByte)
 
 void IServer::HandleSend(Session* session, int sendByte)
 {
-	InterlockedIncrement(&_sendCnt);
+	//InterlockedIncrement(&_sendCnt);
+	session->_sendCnt += sendByte / 10;
+	InterlockedAdd(&_sendCnt, sendByte / 10); // size of each messages is always 10 in this echo server;
 
 	AcquireSRWLockExclusive(&session->_sendBufferLock);
 	session->_sendBuffer.MoveFront(sendByte);
 	ReleaseSRWLockExclusive(&session->_sendBufferLock);
+
+	session->_lastSendTime = timeGetTime();
 
 	long prevSendFlag = InterlockedDecrement(&session->_sendStatus);
 	
@@ -544,6 +554,8 @@ void IServer::UpdateMonitoringData(void)
 
 	_acceptTotal += _acceptCnt;
 	_disconnectTotal += _disconnectCnt;
+	_recvTotal = _recvTotal + (long long)_recvCnt;
+	_sendTotal = _sendTotal + (long long)_sendCnt;
 
 	_acceptCnt = 0;
 	_disconnectCnt = 0;

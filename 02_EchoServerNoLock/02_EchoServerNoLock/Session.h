@@ -48,12 +48,18 @@ private:
 	MyDataStructure::RingBuffer _sendBuffer;
 	SRWLOCK _sendBufferLock;
 
+	SPacket _recvPacket; // member recv buffer for temporary use in this test
+
 	volatile long _ioCount = 0;
 	volatile long _sendStatus = 0;
 
-	//CRITICAL_SECTION _lock;
+	DWORD _lastRecvTime = 0;
+	DWORD _lastSendTime = 0;
 
-protected:
+	__int64 _recvCnt = 0;
+	__int64 _sendCnt = 0;
+
+private:
 	const static unsigned __int64 s_idxMask = (unsigned __int64)0xffff << 48;
 	const static unsigned __int64 s_idMask = ~s_idxMask;
 
