@@ -382,7 +382,7 @@ void IServer::HandleRecv(Session* session, int recvByte)
 		}
 
 		session->_recvBuffer.Dequeue(sizeof(header));
-		
+
 		SPacket packet;
 		session->_recvBuffer.Peek((char*)packet.GetPayloadPtr(), header._len);
 		session->_recvBuffer.Dequeue(header._len);
@@ -393,9 +393,10 @@ void IServer::HandleRecv(Session* session, int recvByte)
 
 		cnt++;
 
-		session->_lastRecvTime = timeGetTime();
 		OnRecv(session->_sessionId, &packet);
 	}
+
+	session->_lastRecvTime = timeGetTime();
 
 	session->_recvCnt += cnt;
 
@@ -415,12 +416,15 @@ void IServer::HandleSend(Session* session, int sendByte)
 
 	session->_lastSendTime = timeGetTime();
 
-	long prevSendFlag = InterlockedDecrement(&session->_sendStatus);
-	
-	if (prevSendFlag == 0)
-	{
-		SendPost(session);
-	}
+	//long prevSendFlag = InterlockedDecrement(&session->_sendStatus);
+	//
+	//if (prevSendFlag == 0)
+	//{
+	//	SendPost(session);
+	//}
+
+	InterlockedExchange(&session->_sendStatus, 0);
+	SendPost(session);
 }
 
 void IServer::HandleRelease(Session* session)
@@ -507,6 +511,7 @@ void IServer::SendPost(Session* session)
 
 	if (session->_sendBuffer.Size() == 0)
 	{
+		InterlockedExchange(&session->_sendStatus, 0);
 		return;
 	}
 
@@ -524,7 +529,6 @@ void IServer::SendPost(Session* session)
 	wsabuf[1].len = bufferSize - wsabuf[0].len;
 	ReleaseSRWLockShared(&session->_sendBufferLock);
 
-
 	int sendRet = WSASend(session->_clientSocket, wsabuf, 2, NULL, 0, (LPWSAOVERLAPPED)&session->_sendOvl, NULL);
 
 	if (sendRet == SOCKET_ERROR)
@@ -537,6 +541,9 @@ void IServer::SendPost(Session* session)
 			{
 				wprintf(L"(Error) WSASend Error, sessionId : %llu, errorCode : %d\n", Session::GetIdNumFromId(session->_sessionId), errorCode);
 			}
+			
+			InterlockedExchange(&session->_sendStatus, 0);
+
 			if (InterlockedDecrement(&session->_ioCount) == 0)
 			{
 				PostQueuedCompletionStatus(_networkIOCP, 1, (ULONG_PTR)session, (LPOVERLAPPED)&session->_releaseOvl);
