@@ -410,12 +410,15 @@ void IServer::HandleSend(Session* session, int sendByte)
 
 	session->_sendBuffer.MoveFront(sendByte);
 
-	long prevSendFlag = InterlockedDecrement(&session->_sendStatus);
-	
-	if (prevSendFlag == 0)
-	{
-		SendPost(session);
-	}
+	//long prevSendFlag = InterlockedDecrement(&session->_sendStatus);
+	//
+	//if (prevSendFlag == 0)
+	//{
+	//	SendPost(session);
+	//}
+
+	InterlockedDecrement(&session->_sendStatus);
+	SendPost(session);
 }
 
 void IServer::HandleRelease(Session* session)
@@ -518,6 +521,7 @@ void IServer::SendPost(Session* session)
 
 	if (session->_sendBuffer.Size() == 0)
 	{
+		InterlockedExchange(&session->_sendStatus, 0);
 		return;
 	}
 
