@@ -72,6 +72,16 @@ protected:
 		return _disconnectTotal;
 	}
 
+	inline long long GetRecvTotal(void) const
+	{
+		return _recvTotal;
+	}
+
+	inline long long GetSendTotal(void) const
+	{
+		return _sendTotal;
+	}
+
 	inline long GetAcceptTPS(void) const
 	{
 		return _acceptTPS;
@@ -128,6 +138,8 @@ private:
 
 	long _acceptTotal = 0;
 	long _disconnectTotal = 0;
+	long long _recvTotal = 0;
+	long long _sendTotal = 0;
 
 	bool _isActive = true;
 };

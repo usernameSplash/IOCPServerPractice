@@ -103,8 +103,11 @@ unsigned int WINAPI EchoServer::MonitorThread(void* arg)
 		wprintf(L"  Accept TPS : %d\n", instance->GetAcceptTPS());
 		wprintf(L"  Disconnect TPS : %d\n\n", instance->GetDisconnectTPS());
 
-		wprintf(L"  Recv TPS : %d\n", instance->GetRecvTPS());
-		wprintf(L"  Send TPS : %d\n\n", instance->GetSendTPS());
+		wprintf(L"  Recv Total : %lld messages\n", instance->GetRecvTotal());
+		wprintf(L"  Send Total : %lld messages\n\n", instance->GetSendTotal());
+
+		wprintf(L"  Recv TPS : %d messages/s\n", instance->GetRecvTPS());
+		wprintf(L"  Send TPS : %d messages/s\n\n", instance->GetSendTPS());
 	}
 
 	wprintf(L"# Monitor Thread End : %d\n", threadId);

@@ -227,15 +227,16 @@ unsigned int WINAPI IServer::AcceptThread(void* arg)
 
 		clientSocket = accept(instance->_listenSocket, (SOCKADDR*)&clientAddr, &addrLen);
 		
-		if (instance->_isActive == false)
-		{
-			break;
-		}
-
 		if (clientSocket == INVALID_SOCKET)
 		{
-			wprintf(L"# Accept Failed");
-			__debugbreak();
+			if (instance->_isActive == false)
+			{
+				break;
+			}
+
+			int errorCode = WSAGetLastError();
+			wprintf(L"# Accept Failed : %d\n", errorCode);
+			//__debugbreak();
 			instance->_isActive = false;
 			break;
 		}
@@ -404,7 +405,8 @@ void IServer::HandleRecv(Session* session, int recvByte)
 
 void IServer::HandleSend(Session* session, int sendByte)
 {
-	InterlockedIncrement(&_sendCnt);
+	InterlockedAdd(&_sendCnt, sendByte / 10);
+	//InterlockedIncrement(&_sendCnt);
 
 	session->_sendBuffer.MoveFront(sendByte);
 
@@ -561,6 +563,8 @@ void IServer::UpdateMonitoringData(void)
 
 	_acceptTotal += _acceptCnt;
 	_disconnectTotal += _disconnectCnt;
+	_recvTotal = _recvTotal + (long long)_recvCnt;
+	_sendTotal = _sendTotal + (long long)_sendCnt;
 
 	_acceptCnt = 0;
 	_disconnectCnt = 0;
