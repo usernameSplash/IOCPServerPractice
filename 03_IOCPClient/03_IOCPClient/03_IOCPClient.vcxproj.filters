@@ -1,0 +1,53 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Client">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Util">
+      <UniqueIdentifier>{9458cc97-dfff-471b-bb1d-4f5b61168ec5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Contents">
+      <UniqueIdentifier>{3f03583d-501f-43e7-b43c-dafb9322f8d8}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Client.cpp">
+      <Filter>Client</Filter>
+    </ClCompile>
+    <ClCompile Include="ClientSession.cpp">
+      <Filter>Client</Filter>
+    </ClCompile>
+    <ClCompile Include="RingBuffer.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="SerializationBuffer.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="EchoClient.cpp">
+      <Filter>Contents</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Client.h">
+      <Filter>Client</Filter>
+    </ClInclude>
+    <ClInclude Include="ClientSession.h">
+      <Filter>Client</Filter>
+    </ClInclude>
+    <ClInclude Include="SerializationBuffer.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="RingBuffer.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Protocol.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="EchoClient.h">
+      <Filter>Contents</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>
