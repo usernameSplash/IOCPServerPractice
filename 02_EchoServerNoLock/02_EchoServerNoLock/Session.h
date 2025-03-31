@@ -48,7 +48,7 @@ private:
 	MyDataStructure::RingBuffer _sendBuffer;
 	SRWLOCK _sendBufferLock;
 
-	SPacket _recvPacket; // member recv buffer for temporary use in this test
+	//SPacket _recvPacket; // member recv buffer for temporary use in this test
 
 	volatile long _ioCount = 0;
 	volatile long _sendStatus = 0;

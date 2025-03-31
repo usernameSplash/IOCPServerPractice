@@ -19,7 +19,7 @@ public:
 	virtual ~IServer() {};
 
 protected:
-	bool Initialize(const wchar_t* IP, short port, int numOfWorkerThread, int numOfConcurrentWorkerThread, bool nagle, bool zeroCopy, int numSessionMax);
+	bool Initialize(const wchar_t* IP, const short port, const int numOfWorkerThread, const int numOfConcurrentWorkerThread, const bool nagle, const bool zeroCopy, const int numSessionMax);
 	void Terminate(void);
 
 protected:

@@ -8,7 +8,7 @@ IServer::IServer()
 	// To do...
 }
 
-bool IServer::Initialize(const wchar_t* IP, short port, int numOfWorkerThread, int numOfConcurrentWorkerThread, bool nagle, bool zeroCopy, int numSessionMax)
+bool IServer::Initialize(const wchar_t* IP, const short port, const int numOfWorkerThread, const int numOfConcurrentWorkerThread, const bool nagle, const bool zeroCopy, const int numSessionMax)
 {
 	wcsncpy(_IP, IP, 16);
 	_port = port;
