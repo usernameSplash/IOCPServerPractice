@@ -22,8 +22,8 @@ static LockFreeStack<int> s_stack2;
 
 int wmain(void)
 {
-	//Test1();
-	Test2();
+	Test1();
+	//Test2();
 
 	return 0;
 }

@@ -26,7 +26,7 @@ public:
 	T* Alloc(Types... args);
 
 private:
-	inline __int64 SetNode(__int64 id, void* ptr)
+	inline __int64 SetNodeValue(__int64 id, void* ptr)
 	{
 		__int64 retVal = (id << 47) | (__int64)ptr;
 		return retVal;
@@ -45,7 +45,7 @@ private:
 private:
 	static constexpr unsigned __int64 ADDRESS_MASK = 0x00007fffffffffff;
 	static constexpr unsigned __int64 KEY_MASK = 0xffff800000000000;
-	
+
 private:
 	bool _bPlacementNew;
 
@@ -71,7 +71,7 @@ LockFreePool<T>::LockFreePool(int size, bool placementNew, Types... args)
 			node->_next = _top;
 
 			__int64 id = InterlockedIncrement64(&_id);
-			__int64 newTop = SetNode(id, node);
+			__int64 newTop = SetNodeValue(id, node);
 
 			_top = newTop;
 		}
@@ -86,7 +86,7 @@ LockFreePool<T>::LockFreePool(int size, bool placementNew, Types... args)
 			new (&(node->_data)) T(args...);
 
 			__int64 id = InterlockedIncrement64(&_id);
-			__int64 newTop = SetNode(id, node);
+			__int64 newTop = SetNodeValue(id, node);
 
 			_top = newTop;
 		}
@@ -107,7 +107,7 @@ LockFreePool<T>::~LockFreePool()
 		{
 			Node* topNode = (Node*)GetAddress(_top);
 			__int64 next = topNode->_next;
-			
+
 			delete topNode;
 
 			_top = next;
@@ -133,7 +133,7 @@ void LockFreePool<T>::Free(T* data)
 {
 	__int64 id = InterlockedIncrement64(&_id);
 	Node* newTopNode = (Node*)data;
-	__int64 newTop = SetNode(id, data);
+	__int64 newTop = SetNodeValue(id, data);
 	__int64 tempTop;
 
 	if (_bPlacementNew)
@@ -155,12 +155,13 @@ template<typename T>
 template<typename... Types>
 T* LockFreePool<T>::Alloc(Types... args)
 {
-	__int64 tempTop;
 	Node* tempTopNode;
+	__int64 tempTop;
 	__int64 next;
 
 	do
 	{
+
 		tempTop = _top;
 
 		if (tempTop == NULL)

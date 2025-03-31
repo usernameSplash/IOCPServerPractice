@@ -2,26 +2,35 @@
 #include "LockFreePool.h"
 #include <cstdio>
 
+int* arr[10000];
+
 int wmain(void)
 {
-	LockFreePool<int> pool (1);
+	LockFreePool<int> pool (10000);
 
-	auto a = pool.Alloc();
-	int* b = pool.Alloc();
-	*a = 1;
-	*b = 2;
+	//for (int a = 0; a < 10; ++a)
+	//{
+	//	for (int iCnt = 0; iCnt < 10000; ++iCnt)
+	//	{
+	//		arr[iCnt] = pool.Alloc();
+	//	}
+	//	for (int iCnt = 0; iCnt < 10000; ++iCnt)
+	//	{
+	//		pool.Free(arr[iCnt]);
+	//	}
+	//}
 
-	wprintf(L"a: %d\n", *a);
-	wprintf(L"b: %d\n", *b);
-
-	pool.Free(a);
-	pool.Free(b);
-
-	int* c = pool.Alloc();
-	int* d = pool.Alloc();
-
-	wprintf(L"c: %d\n", *c);
-	wprintf(L"d: %d\n", *d);
+	while (true)
+	{
+		for (int iCnt = 0; iCnt < 10000; ++iCnt)
+		{
+			arr[iCnt] = pool.Alloc();
+		}
+		for (int iCnt = 0; iCnt < 10000; ++iCnt)
+		{
+			pool.Free(arr[iCnt]);
+		}
+	}
 
 	return 0;
 }
