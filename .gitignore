@@ -3,6 +3,9 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 
+# DumpFile
+*.dmp
+
 ## Project_02_13 Private File
 Project/Project_02_13/Project_02_13/log.txt
 
