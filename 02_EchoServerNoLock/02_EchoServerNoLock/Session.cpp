@@ -37,6 +37,18 @@ void Session::Initialize(const unsigned __int64 idNum, const unsigned short inde
 	_sessionId = (idx | id);
 	_clientSocket = socket;
 	_clientAddr = addr;
+
+	_ioCount = 0;
+	_sendStatus = 0;
+	
+	_recvBuffer.ClearBuffer();
+	_sendBuffer.ClearBuffer();
+
+	_lastRecvTime = 0;
+	_lastSendTime = 0;
+
+	_recvCnt = 0;
+	_sendCnt = 0;
 }
 
 unsigned __int64 Session::GetIdNumFromId(const SessionID sessionId)

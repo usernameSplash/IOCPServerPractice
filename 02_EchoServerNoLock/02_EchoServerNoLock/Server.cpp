@@ -363,7 +363,7 @@ void IServer::HandleRecv(Session* session, int recvByte)
 {
 	session->_recvBuffer.MoveRear(recvByte);
 
-	int bufferSize = recvByte;
+	int bufferSize = session->_recvBuffer.Size();
 	int cnt = 0;
 
 	while (bufferSize > 0)
@@ -436,7 +436,7 @@ void IServer::HandleRelease(Session* session)
 	closesocket(session->_clientSocket);
 
 	AcquireSRWLockExclusive(&_sessionIndexStackLock);
-	_sessionIndexStack.push(id);
+	_sessionIndexStack.push(idx);
 	ReleaseSRWLockExclusive(&_sessionIndexStackLock);
 
 	InterlockedDecrement(&_sessionCnt);
