@@ -12,7 +12,7 @@ bool EchoServer::Initialize(void)
 		return false;
 	}
 
-	if (IServer::Initialize(SERVER_ADDRESS, SERVER_PORT, 16, 8, true, true, 1) == false)
+	if (IServer::Initialize(SERVER_ADDRESS, SERVER_PORT, 16, 8, true, true, 50) == false)
 	{
 		return false;
 	}

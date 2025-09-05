@@ -432,8 +432,7 @@ void IServer::HandleRelease(Session* session)
 	SessionID id = session->_sessionId;
 	short idx = Session::GetIndexNumFromId(id);
 
-	session->_isActive = false;
-	closesocket(session->_clientSocket);
+	session->Terminate();
 
 	AcquireSRWLockExclusive(&_sessionIndexStackLock);
 	_sessionIndexStack.push(idx);

@@ -32,6 +32,7 @@ public:
 
 public:
 	void Initialize(const unsigned __int64 idNum, const unsigned short index,  const SOCKET socket, const SOCKADDR_IN addr);
+	void Terminate(void);
 
 private:
 	bool _isActive = false;
