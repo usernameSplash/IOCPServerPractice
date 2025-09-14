@@ -8,12 +8,15 @@ IServer::IServer()
 	// To do...
 }
 
-bool IServer::Initialize(const wchar_t* IP, short port, int numOfWorkerThread, int numOfConcurrentWorkerThread, bool nagle, bool zeroCopy, int numSessionMax)
+bool IServer::Initialize(const wchar_t* IP, const short port, const int numOfWorkerThread, const int numOfConcurrentWorkerThread, const bool nagle, const bool zeroCopy, const int numSessionMax)
 {
 	wcsncpy(_IP, IP, 16);
 	_port = port;
 	_numOfWorkerThread = numOfWorkerThread;
 	_numSessionMax = numSessionMax;
+	
+	_nagle = nagle;
+	_zeroCopy = zeroCopy;
 
 	WSADATA wsa;
 	int startRet = WSAStartup(MAKEWORD(2, 2), &wsa);
@@ -104,8 +107,13 @@ bool IServer::Initialize(const wchar_t* IP, short port, int numOfWorkerThread, i
 		}
 	}
 
-	_sessionMap.reserve(numSessionMax);
-	InitializeSRWLock(&_sessionMapLock);
+	for (int iCnt = 0; iCnt < numSessionMax; ++iCnt)
+	{
+		_sessionIndexStack.Push(iCnt);
+		_sessionArray[iCnt] = new Session;
+	}
+
+	_isInitialized = true;
 
 	OnInitialize();
 
@@ -118,14 +126,10 @@ void IServer::Terminate(void)
 
 	closesocket(_listenSocket);
 
-	std::unordered_map<SessionID, Session*>::iterator iter = _sessionMap.begin();
-
-	for (; iter != _sessionMap.end();)
+	for (int iCnt = 0; iCnt < _numSessionMax; ++iCnt)
 	{
-		Session* session = iter->second;
-		_sessionMap.erase(iter);
-		closesocket(session->_clientSocket);
-		delete session;
+		closesocket(_sessionArray[iCnt]->_clientSocket);
+		delete _sessionArray[iCnt];
 	}
 
 	for (int iCnt = 0; iCnt < _numOfWorkerThread; ++iCnt)
@@ -151,61 +155,33 @@ void IServer::Terminate(void)
 
 bool IServer::DisconnectSession(const SessionID sessionId)
 {
-	AcquireSRWLockShared(&_sessionMapLock);
-	
-	std::unordered_map<SessionID, Session*>::iterator iter = _sessionMap.find(sessionId);
-	if (iter == _sessionMap.end())
+	unsigned short idx = Session::GetIndexNumFromId(sessionId);
+	Session* session = _sessionArray[idx];
+
+	if (session->_isActive == false)
 	{
-		ReleaseSRWLockShared(&_sessionMapLock);
-		return false;
+		return false; // already disconnected
 	}
-
-	Session* session = iter->second;
-
-	//AcquireSRWLockExclusive(&session->_lock);
-	EnterCriticalSection(&session->_lock);
-
-	ReleaseSRWLockShared(&_sessionMapLock);
 
 	session->_isActive = false;
 	// Todo..
-
-	//ReleaseSRWLockShared(&session->_lock);
-	LeaveCriticalSection(&session->_lock);
 
 	return true;
 }
 
 bool IServer::SendPacket(const SessionID sessionId, SPacket* packet)
 {
-	AcquireSRWLockShared(&_sessionMapLock);
-
-	std::unordered_map<SessionID, Session*>::iterator iter = _sessionMap.find(sessionId);
-	if (iter == _sessionMap.end())
-	{
-		ReleaseSRWLockShared(&_sessionMapLock);
-		return false;
-	}
-
-	Session* session = iter->second;
-
-	//AcquireSRWLockExclusive(&session->_lock);
-	EnterCriticalSection(&session->_lock);
-
-	ReleaseSRWLockShared(&_sessionMapLock);
+	unsigned short idx = Session::GetIndexNumFromId(sessionId);
+	Session* session = _sessionArray[idx];
 
 	EchoPacketHeader header;
 	header._len = (short)packet->GetPayloadSize();
 
 	packet->SetHeaderData(&header, sizeof(header));
 
-	session->_sendBuffer.Enqueue(packet->GetBufferPtr(), sizeof(header) + header._len);
-
-	//ReleaseSRWLockShared(&session->_lock);
+	session->_sendPackets.Enqueue(packet);
 
 	SendPost(session);
-
-	LeaveCriticalSection(&session->_lock);
 
 	return true;
 }
@@ -226,7 +202,7 @@ unsigned int WINAPI IServer::AcceptThread(void* arg)
 		SOCKADDR_IN clientAddr;
 
 		clientSocket = accept(instance->_listenSocket, (SOCKADDR*)&clientAddr, &addrLen);
-		
+
 		if (clientSocket == INVALID_SOCKET)
 		{
 			if (instance->_isActive == false)
@@ -240,6 +216,12 @@ unsigned int WINAPI IServer::AcceptThread(void* arg)
 			instance->_isActive = false;
 			break;
 		}
+
+		if (instance->_isActive == false)
+		{
+			break;
+		}
+
 	
 		if (instance->_sessionCnt >= instance->_numSessionMax)
 		{
@@ -265,14 +247,13 @@ unsigned int WINAPI IServer::AcceptThread(void* arg)
 #pragma endregion
 
 #pragma region create_new_session
+		
 		SessionID clientId = idProvider++;
 
-		Session* newSession = new Session;
-		newSession->Initialize(clientId, clientSocket, clientAddr);
+		unsigned short newIndex = instance->_sessionIndexStack.Pop();
 
-		AcquireSRWLockExclusive(&instance->_sessionMapLock);
-		instance->_sessionMap.insert(std::pair<SessionID, Session*>(clientId, newSession));
-		ReleaseSRWLockExclusive(&instance->_sessionMapLock);
+		Session* newSession = instance->_sessionArray[newIndex];
+		newSession->Initialize(clientId, newIndex, clientSocket, clientAddr);
 
 		InterlockedIncrement(&instance->_sessionCnt);
 #pragma endregion
@@ -316,9 +297,6 @@ unsigned int WINAPI IServer::NetworkThread(void* arg)
 			continue;
 		}
 
-		//AcquireSRWLockExclusive(&completionSession->_lock);
-		EnterCriticalSection(&completionSession->_lock);
-
 		if (gqcsRet == 0 || transferredByte == 0)
 		{
 			if (gqcsRet == 0)
@@ -352,9 +330,6 @@ unsigned int WINAPI IServer::NetworkThread(void* arg)
 		{
 			PostQueuedCompletionStatus(instance->_networkIOCP, 1, (ULONG_PTR)completionSession, (LPOVERLAPPED)&completionSession->_releaseOvl);
 		}
-
-		//ReleaseSRWLockExclusive(&completionSession->_lock);
-		LeaveCriticalSection(&completionSession->_lock);
 	}
 
 	wprintf(L"# Network Thread End : %d\n", threadId);
@@ -386,18 +361,23 @@ void IServer::HandleRecv(Session* session, int recvByte)
 		}
 
 		session->_recvBuffer.Dequeue(sizeof(header));
-		
-		SPacket packet;
-		session->_recvBuffer.Peek((char*)packet.GetPayloadPtr(), header._len);
+
+		SPacket* packet = SPacket::Alloc();
+		session->_recvBuffer.Peek((char*)packet->GetPayloadPtr(), header._len);
 		session->_recvBuffer.Dequeue(header._len);
 
-		packet.MoveWritePos(header._len);
+		packet->MoveWritePos(header._len);
 
 		bufferSize = bufferSize - (sizeof(header) + header._len);
 
 		cnt++;
-		OnRecv(session->_sessionId, &packet);
+
+		OnRecv(session->_sessionId, packet);
 	}
+
+	session->_lastRecvTime = timeGetTime();
+
+	session->_recvCnt += cnt;
 
 	InterlockedAdd(&_recvCnt, cnt);
 	RecvPost(session);
@@ -405,50 +385,33 @@ void IServer::HandleRecv(Session* session, int recvByte)
 
 void IServer::HandleSend(Session* session, int sendByte)
 {
-	InterlockedAdd(&_sendCnt, sendByte / 10);
-	//InterlockedIncrement(&_sendCnt);
+	for (int iCnt = 0; iCnt < session->_sendPacketNum; ++iCnt)
+	{
+		SPacket* oldSendPacket = session->_oldSendPackets.Dequeue();
+		SPacket::Free(oldSendPacket);
+	}
 
-	session->_sendBuffer.MoveFront(sendByte);
+	session->_sendCnt += sendByte / 10;
+	InterlockedAdd(&_sendCnt, sendByte / 10); // size of each messages is always 10 in this echo server;
 
-	//long prevSendFlag = InterlockedDecrement(&session->_sendStatus);
-	//
-	//if (prevSendFlag == 0)
-	//{
-	//	SendPost(session);
-	//}
+	session->_lastSendTime = timeGetTime();
 
-	InterlockedDecrement(&session->_sendStatus);
+	InterlockedExchange(&session->_sendStatus, 0);
+
 	SendPost(session);
 }
 
 void IServer::HandleRelease(Session* session)
 {
 	SessionID id = session->_sessionId;
+	short idx = Session::GetIndexNumFromId(id);
 
-	AcquireSRWLockExclusive(&_sessionMapLock);
-
-	std::unordered_map<SessionID, Session*>::iterator iter = _sessionMap.find(id);
-	if (iter == _sessionMap.end())
-	{
-		ReleaseSRWLockExclusive(&_sessionMapLock);
-		return;
-	}
-
-	_sessionMap.erase(iter);
-
-	ReleaseSRWLockExclusive(&_sessionMapLock);
-
-	EnterCriticalSection(&session->_lock);
-	LeaveCriticalSection(&session->_lock);
-
-	session->_isActive = false;
-	closesocket(session->_clientSocket);
-
-	delete session;
+	session->Terminate();
+	
+	_sessionIndexStack.Push(idx);
 
 	InterlockedDecrement(&_sessionCnt);
 	InterlockedIncrement(&_disconnectCnt);
-	//_disconnectCnt++;
 
 	OnRelease(id);
 
@@ -487,7 +450,7 @@ void IServer::RecvPost(Session* session)
 		{
 			if (errorCode != WSAECONNRESET && errorCode != WSAECONNABORTED && errorCode != ERROR_NETNAME_DELETED)
 			{
-				wprintf(L"(Error) WSARecv Error, sessionId : %llu, errorCode : %d\n", session->_sessionId, errorCode);
+				wprintf(L"(Error) WSARecv Error, sessionId : %llu, errorCode : %d\n", Session::GetIdNumFromId(session->_sessionId), errorCode);
 			}
 			if (InterlockedDecrement(&session->_ioCount) == 0)
 			{
@@ -507,7 +470,7 @@ void IServer::SendPost(Session* session)
 		return;
 	}
 
-	if (session->_sendBuffer.Size() == 0)
+	if (session->_sendPackets.Size() == 0)
 	{
 		return;
 	}
@@ -517,7 +480,7 @@ void IServer::SendPost(Session* session)
 		return;
 	}
 
-	if (session->_sendBuffer.Size() == 0)
+	if (session->_sendPackets.Size() == 0)
 	{
 		InterlockedExchange(&session->_sendStatus, 0);
 		return;
@@ -526,17 +489,25 @@ void IServer::SendPost(Session* session)
 	InterlockedIncrement(&session->_ioCount);
 	ZeroMemory(&session->_sendOvl._ovl, sizeof(WSAOVERLAPPED));
 
-	int bufferSize = (int)(session->_sendBuffer.Size());
+	WSABUF wsabuf[200];
+	int sendBufSize = (int)session->_sendPackets.Size();
+	
+	int cnt = 0;
+	for (cnt = 0; cnt < sendBufSize; ++cnt)
+	{
+		if (cnt >= 200)
+		{
+			break;
+		}
+		SPacket* packet = session->_sendPackets.Dequeue();
+		wsabuf[cnt].buf = packet->GetBufferPtr();
+		wsabuf[cnt].len = packet->Size();
 
-	WSABUF wsabuf[2];
+		session->_oldSendPackets.Enqueue(packet);
+	}
+	session->_sendPacketNum = cnt;
 
-	wsabuf[0].buf = session->_sendBuffer.GetFrontBufferPtr();
-	wsabuf[0].len = (ULONG)session->_sendBuffer.DirectDequeueSize();
-	wsabuf[1].buf = session->_sendBuffer.GetBufferPtr();
-	wsabuf[1].len = bufferSize - wsabuf[0].len;
-
-
-	int sendRet = WSASend(session->_clientSocket, wsabuf, 2, NULL, 0, (LPWSAOVERLAPPED)&session->_sendOvl, NULL);
+	int sendRet = WSASend(session->_clientSocket, wsabuf, cnt, NULL, 0, (LPWSAOVERLAPPED)&session->_sendOvl, NULL);
 
 	if (sendRet == SOCKET_ERROR)
 	{
@@ -546,8 +517,11 @@ void IServer::SendPost(Session* session)
 		{
 			if (errorCode != WSAECONNRESET && errorCode != WSAECONNABORTED && errorCode != ERROR_NETNAME_DELETED)
 			{
-				wprintf(L"(Error) WSASend Error, sessionId : %llu, errorCode : %d\n", session->_sessionId, errorCode);
+				wprintf(L"(Error) WSASend Error, sessionId : %llu, errorCode : %d\n", Session::GetIdNumFromId(session->_sessionId), errorCode);
 			}
+			
+			InterlockedExchange(&session->_sendStatus, 0);
+
 			if (InterlockedDecrement(&session->_ioCount) == 0)
 			{
 				PostQueuedCompletionStatus(_networkIOCP, 1, (ULONG_PTR)session, (LPOVERLAPPED)&session->_releaseOvl);

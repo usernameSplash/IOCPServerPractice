@@ -1,0 +1,64 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClInclude Include="EchoServer.h">
+      <Filter>Contents</Filter>
+    </ClInclude>
+    <ClInclude Include="Server.h">
+      <Filter>Network</Filter>
+    </ClInclude>
+    <ClInclude Include="Session.h">
+      <Filter>Network</Filter>
+    </ClInclude>
+    <ClInclude Include="Protocol.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="RingBuffer.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="SerializationBuffer.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="ContentsProtocol.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="TLSPool.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="LockFreeQueue.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="LockFreeStack.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="EchoServer.cpp">
+      <Filter>Contents</Filter>
+    </ClCompile>
+    <ClCompile Include="Server.cpp">
+      <Filter>Network</Filter>
+    </ClCompile>
+    <ClCompile Include="Session.cpp">
+      <Filter>Network</Filter>
+    </ClCompile>
+    <ClCompile Include="RingBuffer.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="SerializationBuffer.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Contents">
+      <UniqueIdentifier>{cd8f7d9d-61b2-4ad0-b012-050d6af76f9b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Network">
+      <UniqueIdentifier>{463cefe0-a45a-4884-ad21-2d49bebe0ee7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Util">
+      <UniqueIdentifier>{642c7402-0781-4d3e-aeb6-ff215d7bb104}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
