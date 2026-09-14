@@ -44,7 +44,7 @@ public:
 	void Terminate(void);
 
 private:
-	bool _isActive = false;
+	volatile bool _isActive = false;
 
 	SessionID _sessionId = ULLONG_MAX;
 	SOCKET _clientSocket = INVALID_SOCKET;
