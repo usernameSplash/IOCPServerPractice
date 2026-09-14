@@ -91,7 +91,6 @@ void LockFreeQueue<T>::Enqueue(T data)
 		__int64 tempTail = _tail;
 		Node* tempTailNode = (Node*)GetAddress(tempTail);
 		__int64 tempTailNext = tempTailNode->_next;
-		Node* nextNode = (Node*)GetAddress(tempTailNext);
 
 		if (tempTailNext != NULL)
 		{
