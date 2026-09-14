@@ -195,16 +195,22 @@ void ChatServer::OnRecv(const SessionID sessionId, SPacket* packet)
 	AcquireSRWLockShared(&_playerMapLock);
 	unordered_map<unsigned __int64, Player*>::iterator iter = _playersMap.find(sessionId);
 
+	Player* player;
 	if (iter == _playersMap.end())
 	{
-		DisconnectSession(sessionId);
+		player = nullptr;
+	}
+	else
+	{
+		player = iter->second;
+	}
 		ReleaseSRWLockShared(&_playerMapLock);
+
+	if (player == nullptr)
+	{
+		DisconnectSession(sessionId);
 		return;
 	}
-
-	ReleaseSRWLockShared(&_playerMapLock);
-
-	Player* player = iter->second;
 
 	player->_lastRecvTime = timeGetTime();
 
