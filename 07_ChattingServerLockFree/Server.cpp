@@ -41,8 +41,7 @@ bool IServer::Initialize(const wchar_t* IP, const short port, const int numOfWor
 		return false;
 	}
 
-	// set Nagle
-	if (nagle)
+	// set Linger (RST on close, no TIME_WAIT) - inherited by accepted sockets
 	{
 		linger lingerOption;
 		lingerOption.l_onoff = 1;
@@ -51,6 +50,18 @@ bool IServer::Initialize(const wchar_t* IP, const short port, const int numOfWor
 		if (setSockOptRet == SOCKET_ERROR)
 		{
 			wprintf(L"# Setting Linger Option Failed\n");
+			return false;
+		}
+	}
+
+	// set Nagle (nagle == false -> TCP_NODELAY) - inherited by accepted sockets
+	if (nagle == false)
+	{
+		BOOL noDelay = TRUE;
+		int setSockOptRet = setsockopt(_listenSocket, IPPROTO_TCP, TCP_NODELAY, (const char*)&noDelay, sizeof(noDelay));
+		if (setSockOptRet == SOCKET_ERROR)
+		{
+			wprintf(L"# Setting TCP_NODELAY Option Failed\n");
 			return false;
 		}
 	}
