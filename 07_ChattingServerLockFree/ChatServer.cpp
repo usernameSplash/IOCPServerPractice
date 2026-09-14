@@ -204,7 +204,7 @@ void ChatServer::OnRecv(const SessionID sessionId, SPacket* packet)
 	{
 		player = iter->second;
 	}
-		ReleaseSRWLockShared(&_playerMapLock);
+	ReleaseSRWLockShared(&_playerMapLock);
 
 	if (player == nullptr)
 	{
