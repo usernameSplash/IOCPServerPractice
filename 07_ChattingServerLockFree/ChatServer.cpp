@@ -97,9 +97,21 @@ void ChatServer::Terminate()
 
 	_isAlive = false;
 
-	WaitForSingleObject(MonitorThread, INFINITE);
-	//WaitForSingleObject(UpdateThread, INFINITE);
-	WaitForSingleObject(TimeoutThread, INFINITE);
+	if (_monitorThread != NULL)
+	{
+		WaitForSingleObject(_monitorThread, INFINITE);
+		CloseHandle(_monitorThread);
+		_monitorThread = NULL;
+	}
+
+	//if (_updateThread != NULL) { ... }
+
+	if (_timeoutThread != NULL)
+	{
+		WaitForSingleObject(_timeoutThread, INFINITE);
+		CloseHandle(_timeoutThread);
+		_timeoutThread = NULL;
+	}
 
 	wprintf(L"# Chat Server Terminate\n");
 
