@@ -27,7 +27,7 @@ public:
 	// Reference contract
 	//  - Alloc 시 Usecount는 1
 	//  - Recv path   : Library에서 Alloc, OnRecv에서 Recv용 Packet을 받고, 처리 후 Library에서 Free.
-	//  - Send path   : Contents에서 Alloc, 보낼 횟수만큼 AddCount 설정, AddCount만큼 Contents에서 SendPost 이후 Free
+	//  - Send path   : Contents에서 Alloc, 보낼 횟수만큼 AddCount 설정, AddCount만큼 Contents에서 SendPost, 송신 몫은 Library에서 Free.
 	//					SendPost 실패 시 Contents에서 Free. Send가 끝난 후 Contents의 Alloc에 대한 Free.
 
 	static SPacket* Alloc()
