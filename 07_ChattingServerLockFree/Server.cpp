@@ -461,7 +461,7 @@ void IServer::HandleRecv(Session* session, int recvByte)
 
 	while (bufferSize > 0)
 	{
-		if (bufferSize <= PACKET_HEADER_SIZE)
+		if (bufferSize < PACKET_HEADER_SIZE)
 		{
 			break;
 		}
