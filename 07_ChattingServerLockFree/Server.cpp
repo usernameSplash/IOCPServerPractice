@@ -1,4 +1,4 @@
-
+﻿
 #include "Server.h"
 
 #include <cstdio>
@@ -13,7 +13,15 @@ bool IServer::Initialize(const wchar_t* IP, const short port, const int numOfWor
 	wcsncpy(_IP, IP, 16);
 	_port = port;
 	_numOfWorkerThread = numOfWorkerThread;
-	_numSessionMax = numSessionMax;
+
+	if (numSessionMax > SESSION_MAX)
+	{
+		_numSessionMax = SESSION_MAX;
+	}
+	else
+	{
+		_numSessionMax = numSessionMax;
+	}
 	
 	_nagle = nagle;
 	_zeroCopy = zeroCopy;
@@ -33,8 +41,7 @@ bool IServer::Initialize(const wchar_t* IP, const short port, const int numOfWor
 		return false;
 	}
 
-	// set Nagle
-	if (nagle)
+	// set Linger (RST on close, no TIME_WAIT) - inherited by accepted sockets
 	{
 		linger lingerOption;
 		lingerOption.l_onoff = 1;
@@ -43,6 +50,18 @@ bool IServer::Initialize(const wchar_t* IP, const short port, const int numOfWor
 		if (setSockOptRet == SOCKET_ERROR)
 		{
 			wprintf(L"# Setting Linger Option Failed\n");
+			return false;
+		}
+	}
+
+	// set Nagle (nagle == false -> TCP_NODELAY) - inherited by accepted sockets
+	if (nagle == false)
+	{
+		BOOL noDelay = TRUE;
+		int setSockOptRet = setsockopt(_listenSocket, IPPROTO_TCP, TCP_NODELAY, (const char*)&noDelay, sizeof(noDelay));
+		if (setSockOptRet == SOCKET_ERROR)
+		{
+			wprintf(L"# Setting TCP_NODELAY Option Failed\n");
 			return false;
 		}
 	}
@@ -107,9 +126,9 @@ bool IServer::Initialize(const wchar_t* IP, const short port, const int numOfWor
 		}
 	}
 
-	for (int iCnt = 0; iCnt < numSessionMax; ++iCnt)
+	for (int iCnt = 0; iCnt < _numSessionMax; ++iCnt)
 	{
-		_sessionIndexStack.Push(iCnt);
+		_sessionIndexStack.Push((unsigned short)iCnt);
 		_sessionArray[iCnt] = new Session;
 	}
 
@@ -122,23 +141,58 @@ bool IServer::Initialize(const wchar_t* IP, const short port, const int numOfWor
 
 void IServer::Terminate(void)
 {
-	_isActive = false;
+	_isActive = false;   // declare shutdown : seen by the monitor thread and the accept loop
 
+	// 1. stop accepting
 	closesocket(_listenSocket);
+	WaitForSingleObject(_acceptThread, INFINITE);
 
+	// 2. disconnect all live sessions : the cancelled completions are handled on release path by the workers (ReleaseSession -> HandleRelease -> OnRelease)
 	for (int iCnt = 0; iCnt < _numSessionMax; ++iCnt)
 	{
-		closesocket(_sessionArray[iCnt]->_clientSocket);
-		delete _sessionArray[iCnt];
+		Session* session = _sessionArray[iCnt];
+		if (session != nullptr && session->_isActive)
+		{
+			DisconnectSession(session->_sessionId);
+		}
 	}
 
+	// 3. wait until every session has been released (bounded)
+	const ULONGLONG DRAIN_TIMEOUT_MS = 5000;
+	ULONGLONG drainStart = GetTickCount64();
+	while (_sessionCnt > 0)
+	{
+		if (GetTickCount64() - drainStart >= DRAIN_TIMEOUT_MS)
+		{
+			wprintf(L"# Terminate : %d session(s) not released within %llu ms\n", _sessionCnt, DRAIN_TIMEOUT_MS);
+			break;
+		}
+		Sleep(10);
+	}
+
+	// 4. stop the workers : one NULL-overlapped sentinel per worker
 	for (int iCnt = 0; iCnt < _numOfWorkerThread; ++iCnt)
 	{
 		PostQueuedCompletionStatus(_networkIOCP, 0, 0, 0);
 	}
-
-	WaitForSingleObject(_acceptThread, INFINITE);
 	WaitForMultipleObjects(_numOfWorkerThread, _networkThreads, TRUE, INFINITE);
+
+	// 5. delete sessions
+	for (int iCnt = 0; iCnt < _numSessionMax; ++iCnt)
+	{
+		if (_sessionArray[iCnt] == nullptr)
+		{
+			continue;
+		}
+
+		if (_sessionArray[iCnt]->_clientSocket != INVALID_SOCKET)
+		{
+			closesocket(_sessionArray[iCnt]->_clientSocket);
+		}
+
+		delete _sessionArray[iCnt];
+		_sessionArray[iCnt] = nullptr;
+	}
 
 	CloseHandle(_networkIOCP);
 	CloseHandle(_acceptThread);
@@ -155,12 +209,17 @@ void IServer::Terminate(void)
 
 bool IServer::DisconnectSession(const SessionID sessionId)
 {
-	unsigned short idx = Session::GetIndexNumFromId(sessionId);
-	Session* session = _sessionArray[idx];
+	Session* session = AcquireSession(sessionId);
+
+	if (session == nullptr)
+	{
+		return false; // already released, or the slot was reused by another session
+	}
 
 	if (session->_isActive == false)
 	{
-		return false; // already disconnected
+		ReleaseSession(session);
+		return false; // already disconnecting
 	}
 
 	session->_isActive = false;
@@ -178,6 +237,12 @@ bool IServer::SendPacket(const SessionID sessionId, SPacket* packet)
 
 	if (session == nullptr)
 	{
+		return false;
+	}
+
+	if (session->_isActive == false)
+	{
+		ReleaseSession(session);
 		return false;
 	}
 
@@ -246,6 +311,7 @@ unsigned int WINAPI IServer::AcceptThread(void* arg)
 
 		if (instance->_isActive == false)
 		{
+			closesocket(clientSocket);
 			break;
 		}
 
@@ -286,9 +352,16 @@ unsigned int WINAPI IServer::AcceptThread(void* arg)
 #pragma endregion
 
 		instance->_acceptCnt++;
-		instance->OnAccept(newSession->_sessionId);
 
-		CreateIoCompletionPort((HANDLE)clientSocket, instance->_networkIOCP, (ULONG_PTR)newSession->_sessionId, 0);
+		// bind to IOCP before any IO can be posted (OnAccept may call SendPacket)
+		if (CreateIoCompletionPort((HANDLE)clientSocket, instance->_networkIOCP, (ULONG_PTR)newSession->_sessionId, 0) == NULL)
+		{
+			wprintf(L"# Bind Client Socket to IOCP Failed : %d\n", GetLastError());
+			instance->DisconnectSession(newSession->_sessionId);
+			continue;
+		}
+
+		instance->OnAccept(newSession->_sessionId);
 
 		instance->RecvPost(newSession);
 	}
@@ -313,8 +386,12 @@ unsigned int WINAPI IServer::NetworkThread(void* arg)
 
 		int gqcsRet = GetQueuedCompletionStatus((HANDLE)instance->_networkIOCP, &transferredByte, (PULONG_PTR)&sessionId, (LPOVERLAPPED*)&overlapped, INFINITE);
 
-		if (instance->_isActive == false)
+		if (overlapped == nullptr)
 		{
+			if (gqcsRet == 0)
+			{
+				wprintf(L"# (Error) GQCS Returned Without Overlapped : %d\n", GetLastError());
+			}
 			break;
 		}
 
@@ -385,7 +462,7 @@ void IServer::HandleRecv(Session* session, int recvByte)
 
 	while (bufferSize > 0)
 	{
-		if (bufferSize <= PACKET_HEADER_SIZE)
+		if (bufferSize < PACKET_HEADER_SIZE)
 		{
 			break;
 		}
@@ -395,7 +472,17 @@ void IServer::HandleRecv(Session* session, int recvByte)
 
 		if (header._code != PACKET_CODE)
 		{
-			wprintf(L"# Recv is Failed : Wrong Packet Code\n");
+			// stream is out of sync : a session that never RecvPosts again would become a zombie, so cut it
+			wprintf(L"# Recv is Failed : Wrong Packet Code, sessionId : %llu\n", Session::GetIdNumFromId(session->_sessionId));
+			DisconnectSession(session->_sessionId);
+			return;
+		}
+
+		if (header._len > PACKET_SIZE - PACKET_HEADER_SIZE)
+		{
+			// untrusted length : must fit the SPacket payload buffer (and the ring buffer)
+			wprintf(L"# Recv is Failed : Payload Too Large(%u), sessionId : %llu\n", header._len, Session::GetIdNumFromId(session->_sessionId));
+			DisconnectSession(session->_sessionId);
 			return;
 		}
 
@@ -414,8 +501,9 @@ void IServer::HandleRecv(Session* session, int recvByte)
 
 		if (packet->Decode(header, packet->GetPayloadPtr()) == false)
 		{
+			SPacket::Free(packet);
+			wprintf(L"# Recv is Failed : Decode Failed, sessionId : %llu\n", Session::GetIdNumFromId(session->_sessionId));
 			DisconnectSession(session->_sessionId);
-			wprintf(L"# Recv is Failed : Decode Failed\n");
 			return;
 		}
 
@@ -439,7 +527,12 @@ void IServer::HandleSend(Session* session, int sendByte)
 	for (int iCnt = 0; iCnt < session->_sendPacketNum; ++iCnt)
 	{
 		SPacket* oldSendPacket = session->_oldSendPackets.Dequeue();
-		oldSendPacket->Size();
+
+		if (oldSendPacket == nullptr)
+		{
+			break; // Dequeue can return null conservatively
+		}
+
 		SPacket::Free(oldSendPacket);
 	}
 
@@ -482,14 +575,36 @@ void IServer::RecvPost(Session* session)
 
 	int freeSize = (int)(session->_recvBuffer.Capacity() - session->_recvBuffer.Size());
 
+	if (freeSize <= 0)
+	{
+		// full ring buffer without a complete packet : protocol violation, cannot recv any further
+		wprintf(L"# Recv Buffer Full, sessionId : %llu\n", Session::GetIdNumFromId(session->_sessionId));
+		DisconnectSession(session->_sessionId);
+		ReleaseSession(session); // undo the IncrementUseCount above
+		return;
+	}
+
+	// DirectEnqueueSize() is not clamped by the free size when the buffer is full/wrapped : clamp here
+	int directSize = (int)session->_recvBuffer.DirectEnqueueSize();
+	if (directSize > freeSize)
+	{
+		directSize = freeSize;
+	}
+
 	WSABUF wsabuf[2];
+	DWORD wsabufCnt = 1;
 
 	wsabuf[0].buf = session->_recvBuffer.GetRearBufferPtr();
-	wsabuf[0].len = (ULONG)session->_recvBuffer.DirectEnqueueSize();
-	wsabuf[1].buf = session->_recvBuffer.GetBufferPtr();
-	wsabuf[1].len = freeSize - wsabuf[0].len;
+	wsabuf[0].len = (ULONG)directSize;
 
-	int recvRet = WSARecv(session->_clientSocket, wsabuf, 2, NULL, &flag, (LPOVERLAPPED)&session->_recvOvl, NULL);
+	if (freeSize > directSize)
+	{
+		wsabuf[1].buf = session->_recvBuffer.GetBufferPtr();
+		wsabuf[1].len = (ULONG)(freeSize - directSize);
+		wsabufCnt = 2;
+	}
+
+	int recvRet = WSARecv(session->_clientSocket, wsabuf, wsabufCnt, NULL, &flag, (LPOVERLAPPED)&session->_recvOvl, NULL);
 
 	if (recvRet == SOCKET_ERROR)
 	{
@@ -551,11 +666,29 @@ void IServer::SendPost(Session* session)
 			break;
 		}
 		SPacket* packet = session->_sendPackets.Dequeue();
+
+		if (packet == nullptr)
+		{
+			break;
+		}
+
 		wsabuf[cnt].buf = packet->GetBufferPtr();
 		wsabuf[cnt].len = (ULONG)packet->Size();
 
 		session->_oldSendPackets.Enqueue(packet);
 	}
+
+	if (cnt == 0)
+	{
+#ifdef _DEBUG
+		__debugbreak();
+#endif // _DEBUG
+
+		InterlockedExchange(&session->_sendStatus, 0);
+		ReleaseSession(session);
+		return;
+	}
+
 	session->_sendPacketNum = cnt;
 
 	int sendRet = WSASend(session->_clientSocket, wsabuf, cnt, NULL, 0, (LPOVERLAPPED)&session->_sendOvl, NULL);
@@ -569,6 +702,18 @@ void IServer::SendPost(Session* session)
 			if (errorCode != WSAECONNRESET && errorCode != WSAECONNABORTED && errorCode != ERROR_NETNAME_DELETED)
 			{
 				wprintf(L"(Error) WSASend Error, sessionId : %llu, errorCode : %d\n", Session::GetIdNumFromId(session->_sessionId), errorCode);
+			}
+			
+			for (int iCnt = 0; iCnt < cnt; ++iCnt)
+			{
+				SPacket* failedPacket = session->_oldSendPackets.Dequeue();
+				
+				if (failedPacket == nullptr)
+				{
+					break;
+				}
+
+				SPacket::Free(failedPacket);
 			}
 			
 			InterlockedExchange(&session->_sendStatus, 0);

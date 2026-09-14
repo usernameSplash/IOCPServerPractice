@@ -19,8 +19,8 @@ public:
 		_nickname[0] = L'\0';
 		_sessionKey[0] = '\0';
 
-		_regionX = -1;
-		_regionY = -1;
+		_regionX = REGION_NONE;
+		_regionY = REGION_NONE;
 		_lastRecvTime = timeGetTime();
 	}
 

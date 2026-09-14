@@ -6,6 +6,7 @@ using EchoData = __int64;
 
 #define REGION_Y_NUM 50
 #define REGION_X_NUM 50
+#define REGION_NONE 0xFFFF	// player has not been placed in any region yet
 #define PLAYER_MAX 18000
 #define TIMEOUT_FREQ 40000
 

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <Windows.h>
 
@@ -65,10 +65,10 @@ private:
 	static constexpr unsigned __int64 KEY_MASK = 0xffff800000000000;
 
 private:
-	__int64 _head = 0;
-	__int64 _tail = 0;
+	volatile __int64 _head = 0;
+	volatile __int64 _tail = 0;
 	volatile __int64 _id = 0;
-	__int64 _size = 0;
+	volatile __int64 _size = 0;
 
 private:
 	//LockFreePool<Node> _nodePool;
@@ -91,7 +91,6 @@ void LockFreeQueue<T>::Enqueue(T data)
 		__int64 tempTail = _tail;
 		Node* tempTailNode = (Node*)GetAddress(tempTail);
 		__int64 tempTailNext = tempTailNode->_next;
-		Node* nextNode = (Node*)GetAddress(tempTailNext);
 
 		if (tempTailNext != NULL)
 		{
@@ -123,10 +122,15 @@ T LockFreeQueue<T>::Dequeue(void)
 
 	while (true)
 	{
-		__int64 tempTail = _tail;
 		__int64 tempHead = _head;
+		__int64 tempTail = _tail;
 		Node* tempHeadNode = (Node*)GetAddress(tempHead);
 		__int64 tempHeadNext = tempHeadNode->_next;
+
+		if (tempHead != _head)
+		{
+			continue;
+		}
 
 		if (_size == 0)
 		{
@@ -149,8 +153,11 @@ T LockFreeQueue<T>::Dequeue(void)
 
 		if (InterlockedCompareExchange64(&_head, tempHeadNext, tempHead) == tempHead)
 		{
-			_nodePool->Free(tempHeadNode);
+			// Decrement Before Free : _size can be under-reported
+			// but over-report is never allowed.
+
 			InterlockedDecrement64(&_size);
+			_nodePool->Free(tempHeadNode);
 			break;
 		}
 	}

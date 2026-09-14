@@ -1,4 +1,4 @@
-
+﻿
 #include "Session.h"
 
 Session::Session()
@@ -46,6 +46,7 @@ void Session::Terminate(void)
 {
 	_isActive = false;
 	closesocket(_clientSocket);
+	_clientSocket = INVALID_SOCKET; // socket handle values are recycled by the OS : never close twice
 
 	_recvBuffer.ClearBuffer();
 	
@@ -53,10 +54,10 @@ void Session::Terminate(void)
 	{
 		SPacket* packet = _sendPackets.Dequeue();
 	
-		//if (packet == NULL)
-		//{
-		//	continue;
-		//}
+		if (packet == nullptr)
+		{
+			break;
+		}
 
 		SPacket::Free(packet);
 	}
@@ -65,10 +66,10 @@ void Session::Terminate(void)
 	{
 		SPacket* packet = _oldSendPackets.Dequeue();
 
-		//if (packet == NULL)
-		//{
-		//	continue;
-		//}
+		if (packet == nullptr)
+		{
+			break;
+		}
 
 		SPacket::Free(packet);
 	}

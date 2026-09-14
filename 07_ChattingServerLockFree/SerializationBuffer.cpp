@@ -38,7 +38,7 @@ SPacket::SPacket(const SPacket& other)
 	: mBuffer(new char[other.mCapacity])
 	, mPayloadPtr(mBuffer + PACKET_HEADER_SIZE)
 	, mReadPos(mPayloadPtr)
-	, mWritePos(mPayloadPtr + other.mSize)
+	, mWritePos(mBuffer + other.mSize)
 	, mCapacity(other.mCapacity)
 	, mSize(other.mSize)
 	, mHeaderSize(other.mHeaderSize)
@@ -87,7 +87,7 @@ bool SPacket::Reserve(size_t capacity)
 {
 	char* newBuffer;
 
-	if (mCapacity > capacity)
+	if (mCapacity >= capacity)
 	{
 		return false;
 	}
@@ -97,9 +97,13 @@ bool SPacket::Reserve(size_t capacity)
 		return false;
 	}
 
+	// keep the read/write cursors at the same offsets and copy everything written so far
+	size_t readOffset = mReadPos - mBuffer;
+	size_t writeOffset = mWritePos - mBuffer;
+
 	newBuffer = new char[capacity];
 
-	memcpy(newBuffer, mBuffer, mSize);
+	memcpy(newBuffer, mBuffer, writeOffset);
 
 	mCapacity = capacity;
 
@@ -107,8 +111,8 @@ bool SPacket::Reserve(size_t capacity)
 
 	mBuffer = newBuffer;
 	mPayloadPtr = mBuffer + PACKET_HEADER_SIZE;
-	mReadPos = mPayloadPtr;
-	mWritePos = mPayloadPtr + mSize;
+	mReadPos = mBuffer + readOffset;
+	mWritePos = mBuffer + writeOffset;
 
 	return true;
 }
@@ -171,9 +175,30 @@ size_t SPacket::GetHeaderData(void* outHeader, size_t size)
 	return size;
 }
 
-void SPacket::SetPayloadData(void* data, size_t size)
+size_t SPacket::SetPayloadData(void* data, size_t size)
 {
+	size_t writeOffset = mWritePos - mBuffer;
+
+	if (writeOffset + size > mCapacity)
+	{
+		size_t newCapacity = mCapacity;
+		while (newCapacity < writeOffset + size && newCapacity < PACKET_MAX_SIZE)
+		{
+			newCapacity <<= 1;
+		}
+
+		if (newCapacity < writeOffset + size || Reserve(newCapacity) == false)
+		{
+#ifdef _DEBUG
+			wprintf(L"[SPacket] : SetPayloadData Overflow, size : %zu\n", size);
+#endif
+			return 0;
+		}
+	}
+
 	memcpy(mWritePos, data, size);
+
+	return size;
 }
 
 size_t SPacket::GetPayloadData(void* outData, size_t size)

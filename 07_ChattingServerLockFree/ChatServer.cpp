@@ -1,4 +1,4 @@
-
+﻿
 #include "ChatServer.h"
 
 bool ChatServer::Initialize(void)
@@ -97,9 +97,21 @@ void ChatServer::Terminate()
 
 	_isAlive = false;
 
-	WaitForSingleObject(MonitorThread, INFINITE);
-	//WaitForSingleObject(UpdateThread, INFINITE);
-	WaitForSingleObject(TimeoutThread, INFINITE);
+	if (_monitorThread != NULL)
+	{
+		WaitForSingleObject(_monitorThread, INFINITE);
+		CloseHandle(_monitorThread);
+		_monitorThread = NULL;
+	}
+
+	//if (_updateThread != NULL) { ... }
+
+	if (_timeoutThread != NULL)
+	{
+		WaitForSingleObject(_timeoutThread, INFINITE);
+		CloseHandle(_timeoutThread);
+		_timeoutThread = NULL;
+	}
 
 	wprintf(L"# Chat Server Terminate\n");
 
@@ -157,18 +169,21 @@ void ChatServer::OnRelease(const SessionID sessionId)
 	_playersMap.erase(iter);
 	ReleaseSRWLockExclusive(&_playerMapLock);
 
-	Region* region = &_regions[player->_regionY][player->_regionX];
-	
-	AcquireSRWLockExclusive(&region->_lock);
-	for (auto playerIter = region->_players.begin(); playerIter != region->_players.end(); ++playerIter)
+	if (player->_regionY < REGION_Y_NUM && player->_regionX < REGION_X_NUM)
 	{
-		if (player == (*playerIter))
+		Region* region = &_regions[player->_regionY][player->_regionX];
+
+		AcquireSRWLockExclusive(&region->_lock);
+		for (auto playerIter = region->_players.begin(); playerIter != region->_players.end(); ++playerIter)
 		{
-			region->_players.erase(playerIter);
-			break;
+			if (player == (*playerIter))
+			{
+				region->_players.erase(playerIter);
+				break;
+			}
 		}
+		ReleaseSRWLockExclusive(&region->_lock);
 	}
-	ReleaseSRWLockExclusive(&region->_lock);
 
 	_playerPool->Free(player);
 
@@ -180,16 +195,22 @@ void ChatServer::OnRecv(const SessionID sessionId, SPacket* packet)
 	AcquireSRWLockShared(&_playerMapLock);
 	unordered_map<unsigned __int64, Player*>::iterator iter = _playersMap.find(sessionId);
 
+	Player* player;
 	if (iter == _playersMap.end())
 	{
-		DisconnectSession(sessionId);
-		ReleaseSRWLockShared(&_playerMapLock);
-		return;
+		player = nullptr;
 	}
-
+	else
+	{
+		player = iter->second;
+	}
 	ReleaseSRWLockShared(&_playerMapLock);
 
-	Player* player = iter->second;
+	if (player == nullptr)
+	{
+		DisconnectSession(sessionId);
+		return;
+	}
 
 	player->_lastRecvTime = timeGetTime();
 
@@ -297,15 +318,18 @@ unsigned int WINAPI ChatServer::TimeoutThread(void* arg)
 void ChatServer::SendUnicast(SessionID sessionId, SPacket* packet)
 {
 	packet->AddUseCount(1);
-
-	SendPacket(sessionId, packet);
+	if (SendPacket(sessionId, packet) == false)
+	{
+		SPacket::Free(packet);
+	}
+	SPacket::Free(packet);
 }
 
-void ChatServer::SendMulticastAroundRegion(Region region, SPacket* packet)
+void ChatServer::SendMulticastAroundRegion(Region* region, SPacket* packet)
 {
 	vector<SessionID> sendId;
 
-	for (auto iter = region._aroundRegions.begin(); iter != region._aroundRegions.end(); ++iter)
+	for (auto iter = region->_aroundRegions.begin(); iter != region->_aroundRegions.end(); ++iter)
 	{
 		AcquireSRWLockShared(&(*iter)->_lock);
 		for (auto playerIter = (*iter)->_players.begin(); playerIter != (*iter)->_players.end(); ++playerIter)
@@ -315,21 +339,24 @@ void ChatServer::SendMulticastAroundRegion(Region region, SPacket* packet)
 		ReleaseSRWLockShared(&(*iter)->_lock);
 	}
 
-	AcquireSRWLockShared(&region._lock);
-	for (auto playerIter = region._players.begin(); playerIter != region._players.end(); ++playerIter)
+	AcquireSRWLockShared(&region->_lock);
+	for (auto playerIter = region->_players.begin(); playerIter != region->_players.end(); ++playerIter)
 	{
 		sendId.push_back((*playerIter)->_sessionId);
 	}
-	ReleaseSRWLockShared(&region._lock);
+	ReleaseSRWLockShared(&region->_lock);
 
 	packet->AddUseCount((long)sendId.size());
 
-	int cnt = 0;
 	for (auto sendIdIter = sendId.begin(); sendIdIter != sendId.end(); ++sendIdIter)
 	{
-		cnt++;
-		SendPacket(*sendIdIter, packet);
+		if (SendPacket(*sendIdIter, packet) == false)
+		{
+			SPacket::Free(packet);
+		}
 	}
+
+	SPacket::Free(packet);
 
 	return;
 }
@@ -366,14 +393,20 @@ void ChatServer::HANDLE_REQ_RegionMove(Player* player, SPacket* packet)
 
 	if (accountNum != player->_accountNumber)
 	{
-		wprintf(L"# Handle Move is Failed, Account Num is Wrong : %lld, %lld", accountNum, player->_accountNumber);
+		wprintf(L"# Handle Move is Failed, Account Num is Wrong : %lld, %lld\n", accountNum, player->_accountNumber);
 		DisconnectSession(player->_sessionId);
 		return;
 	}
 
 	//wprintf(L"# Move (%d, %d) -> (%d, %d)\n", player->_regionY, player->_regionX, regionY, regionX);
 
-	if (player->_regionX != 65535 && player->_regionY != 65535)
+	if (regionY >= REGION_Y_NUM || regionX >= REGION_X_NUM)
+	{
+		DisconnectSession(player->_sessionId);
+		return;
+	}
+
+	if (player->_regionX < REGION_X_NUM && player->_regionY < REGION_Y_NUM)
 	{
 		Region* region = &_regions[player->_regionY][player->_regionX];
 
@@ -413,11 +446,23 @@ void ChatServer::HANDLE_REQ_Message(Player* player, SPacket* packet)
 	WORD msgLen;
 	WCHAR message[MSG_LEN];
 
-	UNMARSHAL_REQ_Message(packet, accountNum, msgLen, message);
+	if (UNMARSHAL_REQ_Message(packet, accountNum, msgLen, message) == false)
+	{
+		wprintf(L"# Handle Message is Failed, Message Length is Wrong : %u\n", msgLen);
+		DisconnectSession(player->_sessionId);
+		return;
+	}
 
 	if (accountNum != player->_accountNumber)
 	{
-		wprintf(L"# Handle Message is Failed, Account Num is Wrong : %lld, %lld", accountNum, player->_accountNumber);
+		wprintf(L"# Handle Message is Failed, Account Num is Wrong : %lld, %lld\n", accountNum, player->_accountNumber);
+		DisconnectSession(player->_sessionId);
+		return;
+	}
+
+	if (player->_regionX >= REGION_X_NUM || player->_regionY >= REGION_Y_NUM)
+	{
+		wprintf(L"# Handle Message is Failed, Player is Not in Any Region : %llu\n", player->_sessionId);
 		DisconnectSession(player->_sessionId);
 		return;
 	}
@@ -425,7 +470,7 @@ void ChatServer::HANDLE_REQ_Message(Player* player, SPacket* packet)
 	SPacket* sendPacket = SPacket::Alloc();
 
 	MARSHAL_RES_Message(sendPacket, player->_accountNumber, player->_id, player->_nickname, msgLen, message);
-	SendMulticastAroundRegion(_regions[player->_regionY][player->_regionX], sendPacket);
+	SendMulticastAroundRegion(&_regions[player->_regionY][player->_regionX], sendPacket);
 
 	return;
 }
@@ -442,9 +487,11 @@ void ChatServer::UNMARSHAL_REQ_Login(SPacket* packet, __int64& accountNum, ID& i
 	(*packet) >> accountNum;
 	packet->GetPayloadData((char*)id, sizeof(ID));
 	packet->MoveReadPos(sizeof(ID));
+	id[ID_LEN - 1] = L'\0';
 
 	packet->GetPayloadData((char*)nickname, sizeof(WCHAR) * NICKNAME_LEN);
 	packet->MoveReadPos(sizeof(Nickname));
+	nickname[NICKNAME_LEN - 1] = L'\0';
 
 	packet->GetPayloadData((char*)sessionKey, sizeof(char) * SESSION_KEY_LEN);
 	packet->MoveReadPos(sizeof(SessionKey));
@@ -461,14 +508,20 @@ void ChatServer::UNMARSHAL_REQ_RegionMove(SPacket* packet, __int64& accountNum, 
 	return;
 }
 
-void ChatServer::UNMARSHAL_REQ_Message(SPacket* packet, __int64& accountNum, WORD& msgLen, WCHAR message[MSG_LEN])
+bool ChatServer::UNMARSHAL_REQ_Message(SPacket* packet, __int64& accountNum, WORD& msgLen, WCHAR message[MSG_LEN])
 {
 	(*packet) >> accountNum;
 	(*packet) >> msgLen;
+
+	if (msgLen > sizeof(WCHAR) * MSG_LEN || msgLen > packet->GetPayloadSize())
+	{
+		return false;
+	}
+
 	packet->GetPayloadData((char*)message, msgLen);
 	packet->MoveReadPos(msgLen);
 
-	return;
+	return true;
 }
 
 void ChatServer::MARSHAL_RES_LOGIN(SPacket* packet, BYTE status, __int64 accountNum)
