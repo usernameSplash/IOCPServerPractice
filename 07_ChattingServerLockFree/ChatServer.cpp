@@ -321,7 +321,7 @@ void ChatServer::SendUnicast(SessionID sessionId, SPacket* packet)
 	if (SendPacket(sessionId, packet) == false)
 	{
 		SPacket::Free(packet);
-}
+	}
 	SPacket::Free(packet);
 }
 
@@ -393,7 +393,7 @@ void ChatServer::HANDLE_REQ_RegionMove(Player* player, SPacket* packet)
 
 	if (accountNum != player->_accountNumber)
 	{
-		wprintf(L"# Handle Move is Failed, Account Num is Wrong : %lld, %lld", accountNum, player->_accountNumber);
+		wprintf(L"# Handle Move is Failed, Account Num is Wrong : %lld, %lld\n", accountNum, player->_accountNumber);
 		DisconnectSession(player->_sessionId);
 		return;
 	}
