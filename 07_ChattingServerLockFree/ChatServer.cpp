@@ -487,9 +487,11 @@ void ChatServer::UNMARSHAL_REQ_Login(SPacket* packet, __int64& accountNum, ID& i
 	(*packet) >> accountNum;
 	packet->GetPayloadData((char*)id, sizeof(ID));
 	packet->MoveReadPos(sizeof(ID));
+	id[ID_LEN - 1] = L'\0';
 
 	packet->GetPayloadData((char*)nickname, sizeof(WCHAR) * NICKNAME_LEN);
 	packet->MoveReadPos(sizeof(Nickname));
+	nickname[NICKNAME_LEN - 1] = L'\0';
 
 	packet->GetPayloadData((char*)sessionKey, sizeof(char) * SESSION_KEY_LEN);
 	packet->MoveReadPos(sizeof(SessionKey));
