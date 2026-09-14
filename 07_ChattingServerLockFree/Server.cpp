@@ -526,7 +526,12 @@ void IServer::HandleSend(Session* session, int sendByte)
 	for (int iCnt = 0; iCnt < session->_sendPacketNum; ++iCnt)
 	{
 		SPacket* oldSendPacket = session->_oldSendPackets.Dequeue();
-		oldSendPacket->Size();
+
+		if (oldSendPacket == nullptr)
+		{
+			break; // Dequeue can return null conservatively
+		}
+
 		SPacket::Free(oldSendPacket);
 	}
 
