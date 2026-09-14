@@ -45,7 +45,7 @@ private:
 
 private:
 	void SendUnicast(SessionID sessionId, SPacket* packet);
-	void SendMulticastAroundRegion(Region region, SPacket* packet);
+	void SendMulticastAroundRegion(Region* region, SPacket* packet);
 
 private:
 	void HANDLE_REQ_Login(Player* player, SPacket* packet);
@@ -55,7 +55,7 @@ private:
 
 	void UNMARSHAL_REQ_Login(SPacket* packet, __int64& accountNum, ID& id, Nickname& nickname, SessionKey& sessionKey);
 	void UNMARSHAL_REQ_RegionMove(SPacket* packet, __int64& accountNum, WORD& regionX, WORD& regionY);
-	void UNMARSHAL_REQ_Message(SPacket* packet, __int64& accountNum, WORD& msgLen, WCHAR message[MSG_LEN]);
+	bool UNMARSHAL_REQ_Message(SPacket* packet, __int64& accountNum, WORD& msgLen, WCHAR message[MSG_LEN]);
 	
 	void MARSHAL_RES_LOGIN(SPacket* packet, BYTE status, __int64 accountNum);
 	void MARSHAL_RES_RegionMove(SPacket* packet, __int64 accountNum, WORD regionX, WORD regionY);
