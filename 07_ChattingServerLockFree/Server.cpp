@@ -13,7 +13,15 @@ bool IServer::Initialize(const wchar_t* IP, const short port, const int numOfWor
 	wcsncpy(_IP, IP, 16);
 	_port = port;
 	_numOfWorkerThread = numOfWorkerThread;
+
+	if (numSessionMax > SESSION_MAX)
+	{
+		_numSessionMax = SESSION_MAX;
+	}
+	else
+	{
 	_numSessionMax = numSessionMax;
+	}
 	
 	_nagle = nagle;
 	_zeroCopy = zeroCopy;
