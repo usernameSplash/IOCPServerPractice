@@ -446,11 +446,23 @@ void ChatServer::HANDLE_REQ_Message(Player* player, SPacket* packet)
 	WORD msgLen;
 	WCHAR message[MSG_LEN];
 
-	UNMARSHAL_REQ_Message(packet, accountNum, msgLen, message);
+	if (UNMARSHAL_REQ_Message(packet, accountNum, msgLen, message) == false)
+	{
+		wprintf(L"# Handle Message is Failed, Message Length is Wrong : %u\n", msgLen);
+		DisconnectSession(player->_sessionId);
+		return;
+	}
 
 	if (accountNum != player->_accountNumber)
 	{
-		wprintf(L"# Handle Message is Failed, Account Num is Wrong : %lld, %lld", accountNum, player->_accountNumber);
+		wprintf(L"# Handle Message is Failed, Account Num is Wrong : %lld, %lld\n", accountNum, player->_accountNumber);
+		DisconnectSession(player->_sessionId);
+		return;
+	}
+
+	if (player->_regionX >= REGION_X_NUM || player->_regionY >= REGION_Y_NUM)
+	{
+		wprintf(L"# Handle Message is Failed, Player is Not in Any Region : %llu\n", player->_sessionId);
 		DisconnectSession(player->_sessionId);
 		return;
 	}
@@ -458,7 +470,7 @@ void ChatServer::HANDLE_REQ_Message(Player* player, SPacket* packet)
 	SPacket* sendPacket = SPacket::Alloc();
 
 	MARSHAL_RES_Message(sendPacket, player->_accountNumber, player->_id, player->_nickname, msgLen, message);
-	SendMulticastAroundRegion(_regions[player->_regionY][player->_regionX], sendPacket);
+	SendMulticastAroundRegion(&_regions[player->_regionY][player->_regionX], sendPacket);
 
 	return;
 }
@@ -494,14 +506,20 @@ void ChatServer::UNMARSHAL_REQ_RegionMove(SPacket* packet, __int64& accountNum, 
 	return;
 }
 
-void ChatServer::UNMARSHAL_REQ_Message(SPacket* packet, __int64& accountNum, WORD& msgLen, WCHAR message[MSG_LEN])
+bool ChatServer::UNMARSHAL_REQ_Message(SPacket* packet, __int64& accountNum, WORD& msgLen, WCHAR message[MSG_LEN])
 {
 	(*packet) >> accountNum;
 	(*packet) >> msgLen;
+
+	if (msgLen > sizeof(WCHAR) * MSG_LEN || msgLen > packet->GetPayloadSize())
+	{
+		return false;
+	}
+
 	packet->GetPayloadData((char*)message, msgLen);
 	packet->MoveReadPos(msgLen);
 
-	return;
+	return true;
 }
 
 void ChatServer::MARSHAL_RES_LOGIN(SPacket* packet, BYTE status, __int64 accountNum)
