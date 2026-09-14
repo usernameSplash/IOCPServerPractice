@@ -400,7 +400,13 @@ void ChatServer::HANDLE_REQ_RegionMove(Player* player, SPacket* packet)
 
 	//wprintf(L"# Move (%d, %d) -> (%d, %d)\n", player->_regionY, player->_regionX, regionY, regionX);
 
-	if (player->_regionX != 65535 && player->_regionY != 65535)
+	if (regionY >= REGION_Y_NUM || regionX >= REGION_X_NUM)
+	{
+		DisconnectSession(player->_sessionId);
+		return;
+	}
+
+	if (player->_regionX < REGION_X_NUM && player->_regionY < REGION_Y_NUM)
 	{
 		Region* region = &_regions[player->_regionY][player->_regionX];
 
