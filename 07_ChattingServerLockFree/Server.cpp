@@ -209,12 +209,17 @@ void IServer::Terminate(void)
 
 bool IServer::DisconnectSession(const SessionID sessionId)
 {
-	unsigned short idx = Session::GetIndexNumFromId(sessionId);
-	Session* session = _sessionArray[idx];
+	Session* session = AcquireSession(sessionId);
+
+	if (session == nullptr)
+	{
+		return false; // already released, or the slot was reused by another session
+	}
 
 	if (session->_isActive == false)
 	{
-		return false; // already disconnected
+		ReleaseSession(session);
+		return false; // already disconnecting
 	}
 
 	session->_isActive = false;
