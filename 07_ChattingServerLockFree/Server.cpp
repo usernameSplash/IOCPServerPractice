@@ -574,14 +574,36 @@ void IServer::RecvPost(Session* session)
 
 	int freeSize = (int)(session->_recvBuffer.Capacity() - session->_recvBuffer.Size());
 
+	if (freeSize <= 0)
+	{
+		// full ring buffer without a complete packet : protocol violation, cannot recv any further
+		wprintf(L"# Recv Buffer Full, sessionId : %llu\n", Session::GetIdNumFromId(session->_sessionId));
+		DisconnectSession(session->_sessionId);
+		ReleaseSession(session); // undo the IncrementUseCount above
+		return;
+	}
+
+	// DirectEnqueueSize() is not clamped by the free size when the buffer is full/wrapped : clamp here
+	int directSize = (int)session->_recvBuffer.DirectEnqueueSize();
+	if (directSize > freeSize)
+	{
+		directSize = freeSize;
+	}
+
 	WSABUF wsabuf[2];
+	DWORD wsabufCnt = 1;
 
 	wsabuf[0].buf = session->_recvBuffer.GetRearBufferPtr();
-	wsabuf[0].len = (ULONG)session->_recvBuffer.DirectEnqueueSize();
-	wsabuf[1].buf = session->_recvBuffer.GetBufferPtr();
-	wsabuf[1].len = freeSize - wsabuf[0].len;
+	wsabuf[0].len = (ULONG)directSize;
 
-	int recvRet = WSARecv(session->_clientSocket, wsabuf, 2, NULL, &flag, (LPOVERLAPPED)&session->_recvOvl, NULL);
+	if (freeSize > directSize)
+	{
+	wsabuf[1].buf = session->_recvBuffer.GetBufferPtr();
+		wsabuf[1].len = (ULONG)(freeSize - directSize);
+		wsabufCnt = 2;
+	}
+
+	int recvRet = WSARecv(session->_clientSocket, wsabuf, wsabufCnt, NULL, &flag, (LPOVERLAPPED)&session->_recvOvl, NULL);
 
 	if (recvRet == SOCKET_ERROR)
 	{
