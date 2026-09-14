@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <Windows.h>
 
@@ -24,21 +24,35 @@ protected:
 	virtual ~SPacket(void);
 
 public:
+	// Reference contract
+	//  - Alloc 시 Usecount는 1
+	//  - Recv path   : Library에서 Alloc, OnRecv에서 Recv용 Packet을 받고, 처리 후 Library에서 Free.
+	//  - Send path   : Contents에서 Alloc, 보낼 횟수만큼 AddCount 설정, AddCount만큼 Contents에서 SendPost 이후 Free
+	//					SendPost 실패 시 Contents에서 Free. Send가 끝난 후 Contents의 Alloc에 대한 Free.
+
 	static SPacket* Alloc()
 	{
 		SPacket* packet = s_packetPool.Alloc();
 		packet->Clear();
+		packet->_useCount = 1;
 	
 		return packet;
 	}
 	
 	static bool Free(SPacket* packet)
 	{
-		if (InterlockedDecrement(&packet->_useCount) == 0)
+		long useCount = InterlockedDecrement(&packet->_useCount);
+
+		if (useCount == 0)
 		{
 			s_packetPool.Free(packet);
 
 			return true;
+		}
+
+		if (useCount < 0)
+		{
+			__debugbreak();
 		}
 
 		return false;
@@ -66,7 +80,7 @@ public:
 	size_t SetHeaderData(void* header, size_t size);
 	size_t GetHeaderData(void* outHeader, size_t size);
 
-	void SetPayloadData(void* data, size_t size);
+	size_t SetPayloadData(void* data, size_t size);
 	size_t GetPayloadData(void* outData, size_t size);
 
 	bool IsHeaderEmpty(void);
