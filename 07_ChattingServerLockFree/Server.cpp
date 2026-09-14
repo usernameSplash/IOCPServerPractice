@@ -1,4 +1,4 @@
-
+﻿
 #include "Server.h"
 
 #include <cstdio>
@@ -20,7 +20,7 @@ bool IServer::Initialize(const wchar_t* IP, const short port, const int numOfWor
 	}
 	else
 	{
-	_numSessionMax = numSessionMax;
+		_numSessionMax = numSessionMax;
 	}
 	
 	_nagle = nagle;
@@ -154,7 +154,7 @@ void IServer::Terminate(void)
 		if (session != nullptr && session->_isActive)
 		{
 			DisconnectSession(session->_sessionId);
-	}
+		}
 	}
 
 	// 3. wait until every session has been released (bounded)
@@ -598,7 +598,7 @@ void IServer::RecvPost(Session* session)
 
 	if (freeSize > directSize)
 	{
-	wsabuf[1].buf = session->_recvBuffer.GetBufferPtr();
+		wsabuf[1].buf = session->_recvBuffer.GetBufferPtr();
 		wsabuf[1].len = (ULONG)(freeSize - directSize);
 		wsabufCnt = 2;
 	}
