@@ -240,6 +240,12 @@ bool IServer::SendPacket(const SessionID sessionId, SPacket* packet)
 		return false;
 	}
 
+	if (session->_isActive == false)
+	{
+		ReleaseSession(session);
+		return false;
+	}
+
 	size_t setHeaderRet = 0;
 	bool empty1 = packet->IsHeaderEmpty();
 	bool encodeRet = false;
