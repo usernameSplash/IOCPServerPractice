@@ -351,9 +351,16 @@ unsigned int WINAPI IServer::AcceptThread(void* arg)
 #pragma endregion
 
 		instance->_acceptCnt++;
-		instance->OnAccept(newSession->_sessionId);
 
-		CreateIoCompletionPort((HANDLE)clientSocket, instance->_networkIOCP, (ULONG_PTR)newSession->_sessionId, 0);
+		// bind to IOCP before any IO can be posted (OnAccept may call SendPacket)
+		if (CreateIoCompletionPort((HANDLE)clientSocket, instance->_networkIOCP, (ULONG_PTR)newSession->_sessionId, 0) == NULL)
+		{
+			wprintf(L"# Bind Client Socket to IOCP Failed : %d\n", GetLastError());
+			instance->DisconnectSession(newSession->_sessionId);
+			continue;
+		}
+
+		instance->OnAccept(newSession->_sessionId);
 
 		instance->RecvPost(newSession);
 	}
