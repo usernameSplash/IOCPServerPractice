@@ -318,15 +318,18 @@ unsigned int WINAPI ChatServer::TimeoutThread(void* arg)
 void ChatServer::SendUnicast(SessionID sessionId, SPacket* packet)
 {
 	packet->AddUseCount(1);
-
-	SendPacket(sessionId, packet);
+	if (SendPacket(sessionId, packet) == false)
+	{
+		SPacket::Free(packet);
+}
+	SPacket::Free(packet);
 }
 
-void ChatServer::SendMulticastAroundRegion(Region region, SPacket* packet)
+void ChatServer::SendMulticastAroundRegion(Region* region, SPacket* packet)
 {
 	vector<SessionID> sendId;
 
-	for (auto iter = region._aroundRegions.begin(); iter != region._aroundRegions.end(); ++iter)
+	for (auto iter = region->_aroundRegions.begin(); iter != region->_aroundRegions.end(); ++iter)
 	{
 		AcquireSRWLockShared(&(*iter)->_lock);
 		for (auto playerIter = (*iter)->_players.begin(); playerIter != (*iter)->_players.end(); ++playerIter)
@@ -336,21 +339,24 @@ void ChatServer::SendMulticastAroundRegion(Region region, SPacket* packet)
 		ReleaseSRWLockShared(&(*iter)->_lock);
 	}
 
-	AcquireSRWLockShared(&region._lock);
-	for (auto playerIter = region._players.begin(); playerIter != region._players.end(); ++playerIter)
+	AcquireSRWLockShared(&region->_lock);
+	for (auto playerIter = region->_players.begin(); playerIter != region->_players.end(); ++playerIter)
 	{
 		sendId.push_back((*playerIter)->_sessionId);
 	}
-	ReleaseSRWLockShared(&region._lock);
+	ReleaseSRWLockShared(&region->_lock);
 
 	packet->AddUseCount((long)sendId.size());
 
-	int cnt = 0;
 	for (auto sendIdIter = sendId.begin(); sendIdIter != sendId.end(); ++sendIdIter)
 	{
-		cnt++;
-		SendPacket(*sendIdIter, packet);
+		if (SendPacket(*sendIdIter, packet) == false)
+		{
+			SPacket::Free(packet);
+		}
 	}
+
+	SPacket::Free(packet);
 
 	return;
 }
