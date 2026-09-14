@@ -666,11 +666,29 @@ void IServer::SendPost(Session* session)
 			break;
 		}
 		SPacket* packet = session->_sendPackets.Dequeue();
+
+		if (packet == nullptr)
+		{
+			break;
+		}
+
 		wsabuf[cnt].buf = packet->GetBufferPtr();
 		wsabuf[cnt].len = (ULONG)packet->Size();
 
 		session->_oldSendPackets.Enqueue(packet);
 	}
+
+	if (cnt == 0)
+	{
+#ifdef _DEBUG
+		__debugbreak();
+#endif // _DEBUG
+
+		InterlockedExchange(&session->_sendStatus, 0);
+		ReleaseSession(session);
+		return;
+	}
+
 	session->_sendPacketNum = cnt;
 
 	int sendRet = WSASend(session->_clientSocket, wsabuf, cnt, NULL, 0, (LPOVERLAPPED)&session->_sendOvl, NULL);
@@ -684,6 +702,18 @@ void IServer::SendPost(Session* session)
 			if (errorCode != WSAECONNRESET && errorCode != WSAECONNABORTED && errorCode != ERROR_NETNAME_DELETED)
 			{
 				wprintf(L"(Error) WSASend Error, sessionId : %llu, errorCode : %d\n", Session::GetIdNumFromId(session->_sessionId), errorCode);
+			}
+			
+			for (int iCnt = 0; iCnt < cnt; ++iCnt)
+			{
+				SPacket* failedPacket = session->_oldSendPackets.Dequeue();
+				
+				if (failedPacket == nullptr)
+				{
+					break;
+				}
+
+				SPacket::Free(failedPacket);
 			}
 			
 			InterlockedExchange(&session->_sendStatus, 0);
