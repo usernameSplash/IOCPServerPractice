@@ -311,6 +311,7 @@ unsigned int WINAPI IServer::AcceptThread(void* arg)
 
 		if (instance->_isActive == false)
 		{
+			closesocket(clientSocket);
 			break;
 		}
 
