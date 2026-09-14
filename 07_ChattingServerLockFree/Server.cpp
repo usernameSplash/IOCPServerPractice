@@ -471,7 +471,17 @@ void IServer::HandleRecv(Session* session, int recvByte)
 
 		if (header._code != PACKET_CODE)
 		{
-			wprintf(L"# Recv is Failed : Wrong Packet Code\n");
+			// stream is out of sync : a session that never RecvPosts again would become a zombie, so cut it
+			wprintf(L"# Recv is Failed : Wrong Packet Code, sessionId : %llu\n", Session::GetIdNumFromId(session->_sessionId));
+			DisconnectSession(session->_sessionId);
+			return;
+		}
+
+		if (header._len > PACKET_SIZE - PACKET_HEADER_SIZE)
+		{
+			// untrusted length : must fit the SPacket payload buffer (and the ring buffer)
+			wprintf(L"# Recv is Failed : Payload Too Large(%u), sessionId : %llu\n", header._len, Session::GetIdNumFromId(session->_sessionId));
+			DisconnectSession(session->_sessionId);
 			return;
 		}
 
@@ -490,8 +500,9 @@ void IServer::HandleRecv(Session* session, int recvByte)
 
 		if (packet->Decode(header, packet->GetPayloadPtr()) == false)
 		{
+			SPacket::Free(packet);
+			wprintf(L"# Recv is Failed : Decode Failed, sessionId : %llu\n", Session::GetIdNumFromId(session->_sessionId));
 			DisconnectSession(session->_sessionId);
-			wprintf(L"# Recv is Failed : Decode Failed\n");
 			return;
 		}
 
