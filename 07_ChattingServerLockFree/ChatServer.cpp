@@ -1,4 +1,4 @@
-
+﻿
 #include "ChatServer.h"
 
 bool ChatServer::Initialize(void)
@@ -157,18 +157,21 @@ void ChatServer::OnRelease(const SessionID sessionId)
 	_playersMap.erase(iter);
 	ReleaseSRWLockExclusive(&_playerMapLock);
 
-	Region* region = &_regions[player->_regionY][player->_regionX];
-	
-	AcquireSRWLockExclusive(&region->_lock);
-	for (auto playerIter = region->_players.begin(); playerIter != region->_players.end(); ++playerIter)
+	if (player->_regionY < REGION_Y_NUM && player->_regionX < REGION_X_NUM)
 	{
-		if (player == (*playerIter))
+		Region* region = &_regions[player->_regionY][player->_regionX];
+
+		AcquireSRWLockExclusive(&region->_lock);
+		for (auto playerIter = region->_players.begin(); playerIter != region->_players.end(); ++playerIter)
 		{
-			region->_players.erase(playerIter);
-			break;
+			if (player == (*playerIter))
+			{
+				region->_players.erase(playerIter);
+				break;
+			}
 		}
+		ReleaseSRWLockExclusive(&region->_lock);
 	}
-	ReleaseSRWLockExclusive(&region->_lock);
 
 	_playerPool->Free(player);
 
