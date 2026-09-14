@@ -141,23 +141,58 @@ bool IServer::Initialize(const wchar_t* IP, const short port, const int numOfWor
 
 void IServer::Terminate(void)
 {
-	_isActive = false;
+	_isActive = false;   // declare shutdown : seen by the monitor thread and the accept loop
 
+	// 1. stop accepting
 	closesocket(_listenSocket);
+	WaitForSingleObject(_acceptThread, INFINITE);
 
+	// 2. disconnect all live sessions : the cancelled completions are handled on release path by the workers (ReleaseSession -> HandleRelease -> OnRelease)
 	for (int iCnt = 0; iCnt < _numSessionMax; ++iCnt)
 	{
-		closesocket(_sessionArray[iCnt]->_clientSocket);
-		delete _sessionArray[iCnt];
+		Session* session = _sessionArray[iCnt];
+		if (session != nullptr && session->_isActive)
+		{
+			DisconnectSession(session->_sessionId);
+	}
 	}
 
+	// 3. wait until every session has been released (bounded)
+	const ULONGLONG DRAIN_TIMEOUT_MS = 5000;
+	ULONGLONG drainStart = GetTickCount64();
+	while (_sessionCnt > 0)
+	{
+		if (GetTickCount64() - drainStart >= DRAIN_TIMEOUT_MS)
+		{
+			wprintf(L"# Terminate : %d session(s) not released within %llu ms\n", _sessionCnt, DRAIN_TIMEOUT_MS);
+			break;
+		}
+		Sleep(10);
+	}
+
+	// 4. stop the workers : one NULL-overlapped sentinel per worker
 	for (int iCnt = 0; iCnt < _numOfWorkerThread; ++iCnt)
 	{
 		PostQueuedCompletionStatus(_networkIOCP, 0, 0, 0);
 	}
-
-	WaitForSingleObject(_acceptThread, INFINITE);
 	WaitForMultipleObjects(_numOfWorkerThread, _networkThreads, TRUE, INFINITE);
+
+	// 5. delete sessions
+	for (int iCnt = 0; iCnt < _numSessionMax; ++iCnt)
+	{
+		if (_sessionArray[iCnt] == nullptr)
+		{
+			continue;
+		}
+
+		if (_sessionArray[iCnt]->_clientSocket != INVALID_SOCKET)
+		{
+			closesocket(_sessionArray[iCnt]->_clientSocket);
+		}
+
+		delete _sessionArray[iCnt];
+		_sessionArray[iCnt] = nullptr;
+	}
 
 	CloseHandle(_networkIOCP);
 	CloseHandle(_acceptThread);
