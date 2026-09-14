@@ -126,9 +126,9 @@ bool IServer::Initialize(const wchar_t* IP, const short port, const int numOfWor
 		}
 	}
 
-	for (int iCnt = 0; iCnt < numSessionMax; ++iCnt)
+	for (int iCnt = 0; iCnt < _numSessionMax; ++iCnt)
 	{
-		_sessionIndexStack.Push(iCnt);
+		_sessionIndexStack.Push((unsigned short)iCnt);
 		_sessionArray[iCnt] = new Session;
 	}
 
