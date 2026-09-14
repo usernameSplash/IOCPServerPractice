@@ -385,8 +385,12 @@ unsigned int WINAPI IServer::NetworkThread(void* arg)
 
 		int gqcsRet = GetQueuedCompletionStatus((HANDLE)instance->_networkIOCP, &transferredByte, (PULONG_PTR)&sessionId, (LPOVERLAPPED*)&overlapped, INFINITE);
 
-		if (instance->_isActive == false)
+		if (overlapped == nullptr)
 		{
+			if (gqcsRet == 0)
+			{
+				wprintf(L"# (Error) GQCS Returned Without Overlapped : %d\n", GetLastError());
+			}
 			break;
 		}
 
