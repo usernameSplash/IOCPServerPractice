@@ -640,19 +640,26 @@ void IServer::SendPost(Session* session)
 	{
 		if (session->_sendPackets.Size() == 0)
 		{
+			// Interlock 시도 하기 전부터 SendQueue가 비어있었다면
+			// 다른 Thread에서 이미 Send를 처리한 것
 			return;
 		}
 
 		if (InterlockedExchange(&session->_sendStatus, 1) == 1)
 		{
+			// 다른 Thread의 Send가 아직 처리 중
 			return;
 		}
 
 		if (session->_sendPackets.Size() != 0)
 		{
+			// 이 Thread가 Send 권한을 획득하였으며 Send Queue의 내용이 있으므로
+			// Send 진행
 			break;
 		}
 
+		// Send 권한을 얻었는데, 다른 Thread의 Send로 인해 Queue가 비워졌으면
+		// 다시 권한을 포기하고 loop를 진행한다.
 		InterlockedExchange(&session->_sendStatus, 0);
 	}
 
