@@ -636,21 +636,26 @@ void IServer::SendPost(Session* session)
 		return;
 	}
 
-	if (session->_sendPackets.Size() == 0)
+	while (true)
 	{
-		return;
-	}
+		if (session->_sendPackets.Size() == 0)
+		{
+			return;
+		}
 
-	if (InterlockedExchange(&session->_sendStatus, 1) == 1)
-	{
-		return;
-	}
+		if (InterlockedExchange(&session->_sendStatus, 1) == 1)
+		{
+			return;
+		}
 
-	if (session->_sendPackets.Size() == 0)
-	{
+		if (session->_sendPackets.Size() != 0)
+		{
+			break;
+		}
+
 		InterlockedExchange(&session->_sendStatus, 0);
-		return;
 	}
+
 
 	IncrementUseCount(session);
 	ZeroMemory(&session->_sendOvl._ovl, sizeof(WSAOVERLAPPED));
