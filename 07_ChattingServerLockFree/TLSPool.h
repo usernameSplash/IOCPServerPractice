@@ -46,7 +46,7 @@ private:
 		Chunk* _chunk = nullptr;
 		Chunk* _freeChunk = nullptr;
 		Chunk* _emptyChunk = nullptr;
-		int _chunkIdx = 0;
+		int _chunkIdx = CHUNK_SIZE;		// SubPool 맨 처음 초기화 시 Chunk를 모두 소진한 것과 동일하게 처리하기 위한 초기 값
 		int _freeIdx = 0;
 	};
 
@@ -90,8 +90,8 @@ private:
 	bool _bPlacementNew;
 
 private:
-	__int64 _top = 0;
-	__int64 _emptyTop = 0;
+	volatile __int64 _top = 0;
+	volatile __int64 _emptyTop = 0;
 	volatile __int64 _id = 0;
 
 private:
@@ -461,7 +461,7 @@ template<typename... Types>
 inline void ObjectPool<T>::Initialize(Types... args)
 {
 	_tlsPool = new TLSPool(this, _bPlacementNew);
-	_tlsPool->AcquireChunk(args...);
+	// _tlsPool->AcquireChunk(args...); // Free만 발생하는 thread의 경우 Alloc용 Chunk가 불필요하므로 삭제
 
 	return;
 }
