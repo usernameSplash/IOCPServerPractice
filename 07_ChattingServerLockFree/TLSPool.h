@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #ifndef _WINSOCKAPI_
 #define _WINSOCKAPI_
@@ -6,6 +6,7 @@
 
 #include <Windows.h>
 #include <new.h>
+#include <cstring>
 
 #define CHUNK_SIZE 2000
 #define THREAD_MAX 20
@@ -40,10 +41,11 @@ private:
 		inline void Free(T* obj);
 
 	private:
-		ObjectPool<T>* _globalPool;		// master Pool
+		ObjectPool<T>* _globalPool;
 		bool _bPlacementNew;
 		Chunk* _chunk = nullptr;
 		Chunk* _freeChunk = nullptr;
+		Chunk* _emptyChunk = nullptr;
 		int _chunkIdx = 0;
 		int _freeIdx = 0;
 	};
@@ -77,6 +79,9 @@ private:
 		return (val & KEY_MASK) >> 47;
 	}
 
+	inline void PushEmptyChunk(Chunk* chunk);
+	inline Chunk* PopEmptyChunk(void);
+
 private:
 	static constexpr unsigned __int64 ADDRESS_MASK = 0x00007fffffffffff;
 	static constexpr unsigned __int64 KEY_MASK = 0xffff800000000000;
@@ -85,7 +90,8 @@ private:
 	bool _bPlacementNew;
 
 private:
-	__int64 _top = 0;	// top pointer of bucket stack 
+	__int64 _top = 0;
+	__int64 _emptyTop = 0;
 	volatile __int64 _id = 0;
 
 private:
@@ -111,34 +117,43 @@ ObjectPool<T>::TLSPool::TLSPool(ObjectPool* globalPool, bool placementNew)
 template <typename T>
 ObjectPool<T>::TLSPool::~TLSPool(void)
 {
-	if (_bPlacementNew)
+	// 아직 사용자에게 넘기지 않은 개체만 정리한다.
+	//   _chunk      : [_chunkIdx, CHUNK_SIZE)  아직 꺼내지 않은 것
+	//   _freeChunk  : [0, _freeIdx)            반환되어 쌓인 것
+	//   _emptyChunk : 개체가 없다 — 껍데기만 해제
+	if (_chunk != nullptr)
 	{
-		for (int iCnt = 0; iCnt < CHUNK_SIZE; ++iCnt)
+		for (int iCnt = _chunkIdx; iCnt < CHUNK_SIZE; ++iCnt)
 		{
-			free(_freeChunk->_objects[iCnt]);
-		}
-		delete _freeChunk;
-
-		for (int iCnt = 0; iCnt < CHUNK_SIZE; ++iCnt)
-		{
-			free(_chunk->_objects[iCnt]);
+			if (_bPlacementNew)
+			{
+				free(_chunk->_objects[iCnt]);
+			}
+			else
+			{
+				delete _chunk->_objects[iCnt];
+			}
 		}
 		delete _chunk;
 	}
-	else
+
+	if (_freeChunk != nullptr)
 	{
-		for (int iCnt = 0; iCnt < CHUNK_SIZE; ++iCnt)
+		for (int iCnt = 0; iCnt < _freeIdx; ++iCnt)
 		{
-			delete _freeChunk->_objects[iCnt];
+			if (_bPlacementNew)
+			{
+				free(_freeChunk->_objects[iCnt]);
+			}
+			else
+			{
+				delete _freeChunk->_objects[iCnt];
+			}
 		}
 		delete _freeChunk;
-
-		for (int iCnt = 0; iCnt < CHUNK_SIZE; ++iCnt)
-		{
-			delete _chunk->_objects[iCnt];
-		}
-		delete _chunk;
 	}
+
+	delete _emptyChunk;
 }
 
 template<typename T>
@@ -148,6 +163,23 @@ inline void ObjectPool<T>::TLSPool::AcquireChunk(Types... args)
 	__int64 tempTop;
 	Chunk* tempTopChunk;
 	__int64 tempTopNext;
+
+	// 다 쓴 껍데기를 놓아 준다 — 로컬 캐시가 비어 있으면 로컬, 이미 차 있으면 전역으로
+	if (_chunk != nullptr)
+	{
+		memset(_chunk->_objects, 0, sizeof(_chunk->_objects));
+
+		if (_emptyChunk == nullptr)
+		{
+			_emptyChunk = _chunk;
+		}
+		else
+		{
+			_globalPool->PushEmptyChunk(_chunk);
+		}
+
+		_chunk = nullptr;
+	}
 
 	while (true)
 	{
@@ -185,7 +217,18 @@ inline void ObjectPool<T>::TLSPool::ReleaseChunk(void)
 
 		if (InterlockedCompareExchange64(&_globalPool->_top, newTop, tempTop) == tempTop)
 		{
-			_freeChunk = new Chunk;
+			// 새 반환용 껍데기 : 로컬 캐시 -> 전역 빈 스택 -> 정말 없을 때만 new
+			if (_emptyChunk != nullptr)
+			{
+				_freeChunk = _emptyChunk;
+				_emptyChunk = nullptr;
+			}
+			else
+			{
+				Chunk* emptyChunk = _globalPool->PopEmptyChunk();
+				_freeChunk = (emptyChunk != nullptr) ? emptyChunk : new Chunk;
+			}
+
 			break;
 		}
 	}
@@ -258,6 +301,48 @@ inline void ObjectPool<T>::TLSPool::Free(T* obj)
 #pragma region DefineGlobalPoolFunctions
 
 template<typename T>
+inline void ObjectPool<T>::PushEmptyChunk(Chunk* chunk)
+{
+	__int64 id = InterlockedIncrement64(&_id);
+	__int64 newTop = SetNodeValue(id, chunk);
+
+	while (true)
+	{
+		__int64 tempTop = _emptyTop;
+		chunk->_next = tempTop;
+
+		if (InterlockedCompareExchange64(&_emptyTop, newTop, tempTop) == tempTop)
+		{
+			break;
+		}
+	}
+
+	return;
+}
+
+template<typename T>
+inline typename ObjectPool<T>::Chunk* ObjectPool<T>::PopEmptyChunk(void)
+{
+	while (true)
+	{
+		__int64 tempTop = _emptyTop;
+
+		if (tempTop == NULL)
+		{
+			return nullptr;
+		}
+
+		Chunk* tempTopChunk = (Chunk*)GetAddress(tempTop);
+		__int64 tempTopNext = tempTopChunk->_next;
+
+		if (InterlockedCompareExchange64(&_emptyTop, tempTopNext, tempTop) == tempTop)
+		{
+			return tempTopChunk;
+		}
+	}
+}
+
+template<typename T>
 template<typename... Types>
 ObjectPool<T>::ObjectPool(int chunkNum, bool placementNew, Types... args)
 	: _bPlacementNew(placementNew)
@@ -307,6 +392,17 @@ ObjectPool<T>::ObjectPool(int chunkNum, bool placementNew, Types... args)
 template<typename T>
 ObjectPool<T>::~ObjectPool(void)
 {
+	// 빈 껍데기 스택 정리 — 개체는 없고 껍데기만 있다
+	__int64 emptyCur = _emptyTop;
+	while (GetAddress(emptyCur) != 0)
+	{
+		Chunk* chunk = (Chunk*)GetAddress(emptyCur);
+		__int64 next = chunk->_next;
+		delete chunk;
+		emptyCur = next;
+	}
+	_emptyTop = 0;
+
 	if (_top == NULL)
 	{
 		return;
