@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <Windows.h>
 #include <process.h>
@@ -44,25 +44,19 @@ public:
 	T Pop(void);
 
 private:
-	inline __int64 SetNodeValue(__int64 id, void* ptr)
+	inline __int64 SetNodeValue(__int64 id, Node* node)
 	{
-		__int64 retVal = (id << 47) | (__int64)ptr;
+		__int64 retVal = (__int64)((id << 47) | (unsigned __int64)node & ADDRESS_MASK);
 		return retVal;
 	}
 
-	inline __int64 GetAddress(__int64 val)
+	inline __int64 GetAddress(__int64 word)
 	{
-		return (val & ADDRESS_MASK);
-	}
-
-	inline __int64 GetID(__int64 val)
-	{
-		return (val & KEY_MASK) >> 47;
+		return (__int64)(word & ADDRESS_MASK);
 	}
 
 private:
 	static constexpr unsigned __int64 ADDRESS_MASK = 0x00007fffffffffff;
-	static constexpr unsigned __int64 KEY_MASK = 0xffff800000000000;
 
 public:
 	__int64 _top = NULL;
