@@ -28,6 +28,9 @@
     <ClInclude Include="LockFreeStack.h">
       <Filter>Util</Filter>
     </ClInclude>
+    <ClInclude Include="SystemMonitor.h">
+      <Filter>Util</Filter>
+    </ClInclude>
     <ClInclude Include="Region.h">
       <Filter>Contents</Filter>
     </ClInclude>

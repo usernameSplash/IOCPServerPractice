@@ -148,6 +148,7 @@
     <ClInclude Include="SerializationBuffer.h" />
     <ClInclude Include="Server.h" />
     <ClInclude Include="Session.h" />
+    <ClInclude Include="SystemMonitor.h" />
     <ClInclude Include="TLSPool.h" />
   </ItemGroup>
   <ItemGroup>
