@@ -56,6 +56,39 @@ bool ChatServer::Initialize(void)
 		}
 	}
 
+	int threadNum = 0;
+	int concurrentThreadNum = 0;
+	int nagleOption = 0;
+	int zeroCopyOption = 0;
+
+	wprintf(L"# Total Worker Thread Num : ");
+	if (scanf_s("%d", &threadNum) != 1 || threadNum < 1 || threadNum > WORKER_THREAD_MAX)
+	{
+		wprintf(L"# Invalid Worker Thread Num\n");
+		return false;
+	}
+
+	wprintf(L"# Concurrent Running Worker Thread Count : ");
+	if (scanf_s("%d", &concurrentThreadNum) != 1 || concurrentThreadNum < 1 || concurrentThreadNum > threadNum)
+	{
+		wprintf(L"# Invalid Concurrent Thread Count\n");
+		return false;
+	}
+
+	wprintf(L"# Nagle Option (OFF : 0 / ON : 1) : ");
+	if (scanf_s("%d", &nagleOption) != 1 || (nagleOption != 0 && nagleOption != 1))
+	{
+		wprintf(L"# Invalid Nagle Option\n");
+		return false;
+	}
+
+	wprintf(L"# Zero Copy Option (OFF : 0 / ON : 1) : ");
+	if (scanf_s("%d", &zeroCopyOption) != 1 || (zeroCopyOption != 0 && zeroCopyOption != 1))
+	{
+		wprintf(L"# Invalid Zero Copy Option\n");
+		return false;
+	}
+
 	_monitorThread = (HANDLE)_beginthreadex(NULL, 0, MonitorThread, this, 0, NULL);
 	if (_monitorThread == NULL)
 	{
@@ -77,10 +110,7 @@ bool ChatServer::Initialize(void)
 	//	return false;
 	//}
 
-	int threadNum = 1;
-	int concurrentThreadNum = 1;
-
-	if (IServer::Initialize(SERVER_ADDRESS, SERVER_PORT, threadNum, concurrentThreadNum, true, true, SESSION_MAX) == false)
+	if (IServer::Initialize(SERVER_ADDRESS, SERVER_PORT, threadNum, concurrentThreadNum, (bool)nagleOption, (bool)zeroCopyOption, SESSION_MAX) == false)
 	{
 		Terminate();
 		return false;
