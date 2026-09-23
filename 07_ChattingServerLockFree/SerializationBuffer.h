@@ -58,6 +58,16 @@ public:
 		return false;
 	}
 
+	static long GetPoolCapacity(void)
+	{
+		return s_packetPool.GetCapacity();
+	}
+
+	static long GetPoolGlobalFree(void)
+	{
+		return s_packetPool.GetGlobalFree();
+	}
+
 	inline void AddUseCount(long useCount)
 	{
 		InterlockedAdd(&_useCount, useCount);

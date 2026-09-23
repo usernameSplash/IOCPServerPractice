@@ -96,6 +96,29 @@ private:
 
 private:
 	volatile long _poolNum = 0;
+	volatile long _chunkTotal = 0;
+	volatile long _chunkInGlobal = 0;
+
+public:
+	inline long GetChunkTotal(void) const
+	{
+		return _chunkTotal;
+	}
+
+	inline long GetChunkInGlobal(void) const
+	{
+		return _chunkInGlobal;
+	}
+
+	inline long GetCapacity(void) const
+	{
+		return _chunkTotal * CHUNK_SIZE;
+	}
+
+	inline long GetGlobalFree(void) const
+	{
+		return _chunkInGlobal * CHUNK_SIZE;
+	}
 
 private:
 	thread_local static TLSPool* _tlsPool;
@@ -196,6 +219,7 @@ inline void ObjectPool<T>::TLSPool::AcquireChunk(Types... args)
 
 		if (InterlockedCompareExchange64(&_globalPool->_top, tempTopNext, tempTop) == tempTop)
 		{
+			InterlockedDecrement(&_globalPool->_chunkInGlobal);
 			_chunk = tempTopChunk;
 			break;
 		}
@@ -217,6 +241,8 @@ inline void ObjectPool<T>::TLSPool::ReleaseChunk(void)
 
 		if (InterlockedCompareExchange64(&_globalPool->_top, newTop, tempTop) == tempTop)
 		{
+			InterlockedIncrement(&_globalPool->_chunkInGlobal);
+
 			// 새 반환용 껍데기 : 로컬 캐시 -> 전역 빈 스택 -> 정말 없을 때만 new
 			if (_emptyChunk != nullptr)
 			{
@@ -241,7 +267,8 @@ template<typename... Types>
 inline void ObjectPool<T>::TLSPool::CreateChunk(Types... args)
 {
 	_chunk = new Chunk;
-	
+	InterlockedIncrement(&_globalPool->_chunkTotal);
+
 	if (_bPlacementNew)
 	{
 		for (int iCnt = 0; iCnt < CHUNK_SIZE; ++iCnt)
@@ -368,6 +395,8 @@ ObjectPool<T>::ObjectPool(int chunkNum, bool placementNew, Types... args)
 			__int64 id = InterlockedIncrement64(&_id);
 			__int64 newTop = SetNodeValue(id, chunk);
 			_top = newTop;
+			++_chunkTotal;
+			++_chunkInGlobal;
 		}
 	}
 	else
@@ -385,6 +414,8 @@ ObjectPool<T>::ObjectPool(int chunkNum, bool placementNew, Types... args)
 			__int64 id = InterlockedIncrement64(&_id);
 			__int64 newTop = SetNodeValue(id, chunk);
 			_top = newTop;
+			++_chunkTotal;
+			++_chunkInGlobal;
 		}
 	}
 }
