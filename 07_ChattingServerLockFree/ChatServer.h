@@ -3,6 +3,7 @@
 #include "Server.h"
 #include "ContentsProtocol.h"
 #include "TLSPool.h"
+#include "SystemMonitor.h"
 
 #include "Player.h"
 #include "Region.h"
@@ -80,8 +81,10 @@ private:
 	ObjectPool<Player>* _playerPool;
 
 	SRWLOCK _playerMapLock;
-	
+
 	unsigned __int64 _playerIDProvider = 0;
+
+	SystemMonitor _systemMonitor;
 private:
 	long _waitSignal = 0;
 };

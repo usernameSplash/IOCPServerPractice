@@ -291,11 +291,23 @@ unsigned int WINAPI ChatServer::MonitorThread(void* arg)
 		Sleep(UPDATE_TIMEOUT);
 
 		instance->UpdateMonitoringData();
+		instance->_systemMonitor.Update();
+
+		AcquireSRWLockShared(&instance->_playerMapLock);
+		size_t playerCount = instance->_playersMap.size();
+		ReleaseSRWLockShared(&instance->_playerMapLock);
 
 		wprintf(L"\nESC : Quit\n");
 		wprintf(L"===================================================\n");
 		wprintf(L"Server IP : %s, Port : %d\n", instance->_IP, instance->_port);
 		wprintf(L"===================================================\n");
+		wprintf(L" [System]\n");
+		wprintf(L"  CPU : Process %.1f %% (Kernel %.1f %% / User %.1f %%), Total %.1f %%\n",
+			instance->_systemMonitor.GetProcessCPU(), instance->_systemMonitor.GetProcessKernelCPU(), instance->_systemMonitor.GetProcessUserCPU(), instance->_systemMonitor.GetTotalCPU());
+		wprintf(L"  Memory : Process %d MB, Nonpaged %d MB, Available %d MB, Commit %d MB\n",
+			instance->_systemMonitor.GetProcessMemoryMB(), instance->_systemMonitor.GetNonpagedMB(), instance->_systemMonitor.GetAvailableMB(), instance->_systemMonitor.GetCommitMB());
+		wprintf(L"  Network : Recv %d KB/s, Send %d KB/s\n\n", instance->_systemMonitor.GetNetworkRecvKBps(), instance->_systemMonitor.GetNetworkSendKBps());
+
 		wprintf(L" [Network Statistics]\n");
 		wprintf(L"  Session Count : %d\n\n", instance->GetSessionCount());
 
@@ -310,6 +322,14 @@ unsigned int WINAPI ChatServer::MonitorThread(void* arg)
 
 		wprintf(L"  Recv TPS : %d messages/s\n", instance->GetRecvTPS());
 		wprintf(L"  Send TPS : %d messages/s\n\n", instance->GetSendTPS());
+
+		wprintf(L"  Send Queue : Total %d, Max %d, Slow Sessions %d (>= %d)\n", instance->GetSendQueueTotal(), instance->GetSendQueueMax(), instance->GetSlowSessionCount(), SEND_QUEUE_WARN);
+		wprintf(L"  IO Error Total : %d (TPS %d, Last %d)\n\n", instance->GetIOErrorTotal(), instance->GetIOErrorTPS(), instance->GetLastIOError());
+
+		wprintf(L" [Contents]\n");
+		wprintf(L"  Player Count : %zu\n", playerCount);
+		wprintf(L"  SPacket Pool : Capacity %d, Global Free %d\n", SPacket::GetPoolCapacity(), SPacket::GetPoolGlobalFree());
+		wprintf(L"  Player Pool : Capacity %d, Global Free %d\n\n", instance->_playerPool->GetCapacity(), instance->_playerPool->GetGlobalFree());
 	}
 
 	wprintf(L"# Monitor Thread End : %d\n", threadId);

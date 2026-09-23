@@ -26,4 +26,6 @@ typedef struct NetPacketHeader
 #define PACKET_SIZE 1024
 #define PACKET_MAX_SIZE 8192
 
+#define SEND_QUEUE_WARN 500
+
 using SessionID = unsigned __int64;
