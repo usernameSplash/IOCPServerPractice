@@ -416,7 +416,8 @@ unsigned int WINAPI IServer::NetworkThread(void* arg)
 
 				if (errorCode != WSAECONNABORTED && errorCode != WSAECONNRESET && errorCode != ERROR_NETNAME_DELETED)
 				{
-					wprintf(L"# (Error) GQCS Returned Zero : %d\n", errorCode);
+					InterlockedIncrement(&instance->_ioErrorCnt);
+					instance->_lastIOError = (long)errorCode;
 				}
 			}
 
@@ -799,6 +800,46 @@ void IServer::UpdateMonitoringData(void)
 	_disconnectCnt = 0;
 	_recvCnt = 0;
 	_sendCnt = 0;
+
+	_ioErrorTPS = InterlockedExchange(&_ioErrorCnt, 0);
+	_ioErrorTotal += _ioErrorTPS;
+
+	if (_isInitialized == false || _isActive == false)
+	{
+		return;
+	}
+
+	long sendQueueTotal = 0;
+	long sendQueueMax = 0;
+	long slowSessionCnt = 0;
+
+	for (int iCnt = 0; iCnt < _numSessionMax; ++iCnt)
+	{
+		Session* session = _sessionArray[iCnt];
+
+		if (session == nullptr || session->_isActive == false)
+		{
+			continue;
+		}
+
+		long queueLen = (long)session->_sendPackets.Size();
+
+		sendQueueTotal += queueLen;
+
+		if (queueLen > sendQueueMax)
+		{
+			sendQueueMax = queueLen;
+		}
+
+		if (queueLen >= SEND_QUEUE_WARN)
+		{
+			++slowSessionCnt;
+		}
+	}
+
+	_sendQueueTotal = sendQueueTotal;
+	_sendQueueMax = sendQueueMax;
+	_slowSessionCnt = slowSessionCnt;
 
 	return;
 }

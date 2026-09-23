@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #pragma comment(lib, "ws2_32.lib")
 
 #include "Session.h"
@@ -107,6 +107,36 @@ protected:
 		return _sendTPS;
 	}
 
+	inline long GetSendQueueTotal(void) const
+	{
+		return _sendQueueTotal;
+	}
+
+	inline long GetSendQueueMax(void) const
+	{
+		return _sendQueueMax;
+	}
+
+	inline long GetSlowSessionCount(void) const
+	{
+		return _slowSessionCnt;
+	}
+
+	inline long GetIOErrorTotal(void) const
+	{
+		return _ioErrorTotal;
+	}
+
+	inline long GetIOErrorTPS(void) const
+	{
+		return _ioErrorTPS;
+	}
+
+	inline long GetLastIOError(void) const
+	{
+		return _lastIOError;
+	}
+
 protected:
 	inline bool IsActive(void) const
 	{
@@ -150,6 +180,15 @@ private:
 	long _disconnectTotal = 0;
 	long long _recvTotal = 0;
 	long long _sendTotal = 0;
+
+	volatile long _ioErrorCnt = 0;
+	volatile long _lastIOError = 0;
+	long _ioErrorTotal = 0;
+	long _ioErrorTPS = 0;
+
+	long _sendQueueTotal = 0;
+	long _sendQueueMax = 0;
+	long _slowSessionCnt = 0;
 
 	bool _isActive = true;
 	bool _isInitialized = false;
